@@ -5,18 +5,20 @@ import passport from 'passport';
 import apiRoute from './../../../routes/api.js';
 import webRoute from './../../../routes/web.js';
 import { Model } from 'objection';
-import {DB} from '@averoa/utilities';
+import { DB } from '@averoa/utilities';
 import cors from './cors.js';
 import morgan from './morgan.js';
-import engine from './edge-js.js';
+import edge, {engine} from './edge-js.js';
 import path from 'path';
 import passportConfig from './../../../config/passport.js';
 import test from './test.js'
+import { AppProvider, ViewProvider } from '@averoa/providers';
 const app = express()
 const port = process.env.APP_PORT;
 const __dirname = path.resolve();
 
 export const start = () => {
+  AppProvider.beginning(app)
   test.met(app)
   morgan(app);
   
@@ -27,8 +29,11 @@ export const start = () => {
   Model.knex(DB);
   
   app.use(engine);
-  app.set('views', './../../../views');
-  
+  app.set('views', path.join(__dirname, '/resources/views'));
+  ViewProvider.inject((name, data)=>{
+    edge.GLOBALS[name] = data;
+  })
+
   app.use("/public", express.static(path.join(__dirname, '/public')));
   
   app.use(bodyParser.json())
@@ -36,7 +41,8 @@ export const start = () => {
   
   app.use('/api', apiRoute)
   app.use('/', webRoute)
-  
+
+  AppProvider.end(app)
   app.listen(port, () => {
     console.log(`Example app listening on port ${port}`)
   })
