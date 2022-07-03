@@ -1,7 +1,5 @@
 'use strict';
 
-// import * as edgejs from 'edge.js';
-// let edge = edgejs.default.default;
 import {Edge} from 'edge.js';
 import path from 'path';
 let edge = new Edge({cache: false});
