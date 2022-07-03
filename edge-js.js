@@ -1,7 +1,12 @@
 'use strict';
 
-import * as edgejs from 'edge.js';
-let edge = edgejs.default.default;
+// import * as edgejs from 'edge.js';
+// let edge = edgejs.default.default;
+import {Edge} from 'edge.js';
+import path from 'path';
+let edge = new Edge({cache: false});
+const __dirname = path.resolve();
+
 export var engine = function engine(req, res, next) {
   /*
   |-------------------------------------------------------------------------------------------------
@@ -44,5 +49,7 @@ export var engine = function engine(req, res, next) {
 
   next();
 };
+
+edge.mount(path.join(__dirname, '/resources/views'))
 
 export default edge
