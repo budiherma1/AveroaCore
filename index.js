@@ -10,9 +10,9 @@ import cors from './cors.js';
 import morgan from './morgan.js';
 import edge, {engine} from './edge-js.js';
 import path from 'path';
-import passportConfig from './../../../config/passport.js';
 import test from './test.js'
 import { AppProvider, ViewProvider } from '@averoa/providers';
+import * as Strategies from './../../../app/Strategies/index.js';
 const app = express()
 const port = process.env.APP_PORT;
 const __dirname = path.resolve();
@@ -24,13 +24,19 @@ export const start = async () => {
   
   app.use(cors)
   app.use(passport.initialize())
-  
-  passportConfig();
+
+  for(let strategy in Strategies) {
+    Strategies[strategy].config()
+  }
+
   Model.knex(DB);
   
   app.use(engine);
   app.set('views', path.join(__dirname, '/resources/views'));
-  ViewProvider.inject(edge)
+  
+  for(let ii in ViewProvider.global()) {
+    edge.global(ii, ViewProvider.global()[ii])
+  }
 
   app.use("/public", express.static(path.join(__dirname, '/public')));
   
