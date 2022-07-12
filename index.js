@@ -2,6 +2,7 @@ import env from './env.js';
 import express from 'express';
 import bodyParser from 'body-parser';
 import passport from 'passport';
+import session from'express-session';
 import apiRoute from './../../../routes/api.js';
 import webRoute from './../../../routes/web.js';
 import { Model } from 'objection';
@@ -20,15 +21,24 @@ const __dirname = path.resolve();
 export const start = async () => {
   AppProvider.beginning(app)
   test.met(app)
+  
   morgan(app);
   
-  app.use(cors)
+  // app.use(cors)
+
+  app.use(session({
+    secret: "secret",
+    resave: false ,
+    saveUninitialized: true ,
+  }))
+
   app.use(passport.initialize())
+  app.use(passport.session())
 
   for(let strategy in Strategies) {
     Strategies[strategy].config()
   }
-
+  
   Model.knex(DB);
   
   app.use(engine);
