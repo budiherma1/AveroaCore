@@ -24,7 +24,7 @@ export const start = async () => {
   
   morgan(app);
   
-  // app.use(cors)
+  app.use(cors)
 
   app.use(session({
     secret: "secret",
@@ -65,3 +65,4 @@ export const start = async () => {
 
 export { default as env } from './env.js'
 export { default as edge } from './edge-js.js'
+export { default as command } from './command.js'
