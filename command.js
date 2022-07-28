@@ -59,7 +59,31 @@ const command = () => {
 			if (err) throw err;
 			console.log(`${str} is created successfully.`);
 			let stream = fs.createWriteStream(`app/Models/index.js`, {flags:'a'});
-			stream.write("\n" + `export { default as ${str} } from './${str}.js'`);
+			stream.write("\n" + `export { default as ${str} } from './${str}.js';`);
+
+			// migration
+			let migration = `import { ${str} } from '@averoa/models';
+
+export const up = ${str}.migrationUp.bind(${str});
+export const down = ${str}.migrationDown.bind(${str});
+`
+
+			let migrationName = `${new Date().getTime()}_${str}`;
+			fs.writeFile(`database/migrations/${migrationName}.js`, migration, function (err) {
+				if (err) throw err;
+				console.log(`${migrationName} is created successfully.`);
+			  });
+
+			// seed
+			let seed = `import { ${str} } from '@averoa/models';
+
+export const seed = ${str}.seeder.bind(${str}, 10);
+`
+			let seedName = `${str}Seed`;
+			fs.writeFile(`database/seeds/${seedName}.js`, seed, function (err) {
+				if (err) throw err;
+				console.log(`${seedName} is created successfully.`);
+			  });
 		  });
 	  });
 	

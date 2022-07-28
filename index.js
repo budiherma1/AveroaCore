@@ -14,9 +14,13 @@ import path from 'path';
 import test from './test.js'
 import { AppProvider, ViewProvider } from '@averoa/providers';
 import * as Strategies from './../../../app/Strategies/index.js';
+import csrf from 'csurf';
+import cookieParser from 'cookie-parser';
+
 const app = express()
 const port = process.env.APP_PORT;
 const __dirname = path.resolve();
+const csrfProtection = csrf({ cookie: true })
 
 export const start = async () => {
   AppProvider.beginning(app)
@@ -52,9 +56,10 @@ export const start = async () => {
   
   app.use(bodyParser.json())
   app.use(bodyParser.urlencoded({ extended: true }))
+  app.use(cookieParser())
   
   app.use('/api', apiRoute)
-  app.use('/', webRoute)
+  app.use('/', csrfProtection, webRoute)
 
   AppProvider.end(app)
 
