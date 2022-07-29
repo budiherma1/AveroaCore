@@ -48,18 +48,34 @@ const command = () => {
 	  .description('create model')
 	  .argument('<string>', 'model name')
 	  .action((str, options) => {
-		let template = `import { Model } from 'objection';
-	
-	class ${str} extends Model {
-	  static tableName = '${str.toLowerCase()}';
-	}
-	
-	export default ${str};`;
+		let template = `import Model from './Model.js';
+
+class ${str} extends Model {
+  static tableName = '${str.toLowerCase()}';
+
+  static timestamp = true;
+
+  static column = {
+	id: {
+	  migration: (m) => m.table.increments(m.column).primary(),
+	  method: { post: false },
+	  validation: [{ run: (v) => v.validator.isEmail(v.value), msg: 'email format required' }],
+	},
+	sample_column: {
+	  migration: (m) => m.table.string(m.column, 50).nullable(),
+	  seed: (f) => f.name.firstName(),
+	  method: { get: true, post: true },
+	  validation: [{ run: (v) => v.validator.isEmail(v.value), msg: 'email format required' }],
+	},
+  };
+}
+
+export default ${str};`;
 		fs.writeFile(`app/Models/${str}.js`, template, function (err) {
 			if (err) throw err;
 			console.log(`${str} is created successfully.`);
 			let stream = fs.createWriteStream(`app/Models/index.js`, {flags:'a'});
-			stream.write("\n" + `export { default as ${str} } from './${str}.js';`);
+			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 
 			// migration
 			let migration = `import { ${str} } from '@averoa/models';
@@ -102,7 +118,7 @@ export const seed = ${str}.seeder.bind(${str}, 10);
 			if (err) throw err;
 			console.log(`${str} is created successfully.`);
 			let stream = fs.createWriteStream(`app/Helpers/index.js`, {flags:'a'});
-			stream.write("\n" + `export { default as ${str} } from './${str}.js'`);
+			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 		  });
 	  });
 	
@@ -121,7 +137,7 @@ export const seed = ${str}.seeder.bind(${str}, 10);
 			if (err) throw err;
 			console.log(`${str} is created successfully.`);
 			let stream = fs.createWriteStream(`app/Jobs/index.js`, {flags:'a'});
-			stream.write("\n" + `export { default as ${str} } from './${str}.js'`);
+			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 		  });
 	  });
 	
@@ -140,7 +156,7 @@ export const seed = ${str}.seeder.bind(${str}, 10);
 			if (err) throw err;
 			console.log(`${str} is created successfully.`);
 			let stream = fs.createWriteStream(`app/Repositories/index.js`, {flags:'a'});
-			stream.write("\n" + `export { default as ${str} } from './${str}.js'`);
+			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 		  });
 	  });
 	
@@ -163,7 +179,7 @@ export const seed = ${str}.seeder.bind(${str}, 10);
 			if (err) throw err;
 			console.log(`${str} is created successfully.`);
 			let stream = fs.createWriteStream(`app/Strategies/index.js`, {flags:'a'});
-			stream.write("\n" + `export { default as ${str} } from './${str}.js'`);
+			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 		  });
 	  });
 	
