@@ -51,8 +51,6 @@ export const start = async () => {
   for(let ii in ViewProvider.global()) {
     edge.global(ii, ViewProvider.global()[ii])
   }
-
-  app.use("/public", express.static(path.join(__dirname, '/public')));
   
   app.use(bodyParser.json())
   app.use(bodyParser.urlencoded({ extended: true }))
@@ -60,6 +58,8 @@ export const start = async () => {
   
   app.use('/api', apiRoute)
   app.use('/', csrfProtection, webRoute)
+  
+  app.use(express.static(path.join(__dirname, '/public')));
 
   AppProvider.end(app)
 
