@@ -57,8 +57,9 @@ export const start = async () => {
   app.use(cookieParser())
   
   app.use('/api', apiRoute)
-  app.use('/', csrfProtection, webRoute)
-  
+  app.use('/', webRoute)
+  // app.use('/', csrfProtection, webRoute)
+
   app.use(express.static(path.join(__dirname, '/public')));
 
   AppProvider.end(app)

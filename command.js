@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import fs from 'fs'
+import chalk from 'chalk';
 
 const program = new Command();
 
@@ -23,7 +24,7 @@ const command = () => {
 	export default new ${str};`;
 		fs.writeFile(`app/Controllers/${str}.js`, template, function (err) {
 			if (err) throw err;
-			console.log(`${str} is created successfully.`);
+			console.log(chalk.green(`${str} is created successfully.`));
 		  });
 	  });
 	
@@ -40,15 +41,17 @@ const command = () => {
 	export default new ${str};`;
 		fs.writeFile(`app/Middleware/${str}.js`, template, function (err) {
 			if (err) throw err;
-			console.log(`${str} is created successfully.`);
+			console.log(chalk.green(`${str} is created successfully.`));
 		  });
 	  });
 	
 	program.command('make:model')
 	  .description('create model')
 	  .argument('<string>', 'model name')
+	  .option('-m', 'create migration also')
+	  .option('-s', 'create seed also')
 	  .action((str, options) => {
-		let template = `import Model from './Model.js';
+		let template = `import { Model } from '@averoa/models';';
 
 class ${str} extends Model {
   static tableName = '${str.toLowerCase()}';
@@ -73,33 +76,40 @@ class ${str} extends Model {
 export default ${str};`;
 		fs.writeFile(`app/Models/${str}.js`, template, function (err) {
 			if (err) throw err;
-			console.log(`${str} is created successfully.`);
+			console.log(chalk.green(`${str} is created successfully.`));
 			let stream = fs.createWriteStream(`app/Models/index.js`, {flags:'a'});
 			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 
-			// migration
-			let migration = `import { ${str} } from '@averoa/models';
+			if (options.m) {
 
-export const up = ${str}.migrationUp.bind(${str});
-export const down = ${str}.migrationDown.bind(${str});
-`
+				// migration
+				let migration = `import { ${str} } from '@averoa/models';
+	
+	export const up = ${str}.migrationUp.bind(${str});
+	export const down = ${str}.migrationDown.bind(${str});
+	`
+	
+				let migrationName = `${new Date().getTime()}_${str}`;
+				fs.writeFile(`database/migrations/${migrationName}.js`, migration, function (err) {
+					if (err) throw err;
+					console.log(chalk.green(`${migrationName} is created successfully.`));
+				  });
+			}
 
-			let migrationName = `${new Date().getTime()}_${str}`;
-			fs.writeFile(`database/migrations/${migrationName}.js`, migration, function (err) {
-				if (err) throw err;
-				console.log(`${migrationName} is created successfully.`);
-			  });
+			if (options.s) {
 
-			// seed
-			let seed = `import { ${str} } from '@averoa/models';
+				// seed
+				let seed = `import { ${str} } from '@averoa/models';
+	
+	export const seed = ${str}.seeder.bind(${str}, 10);
+	`
+				let seedName = `${str}Seed`;
+				fs.writeFile(`database/seeds/${seedName}.js`, seed, function (err) {
+					if (err) throw err;
+					console.log(chalk.green(`${seedName} is created successfully.`));
+				  });
+			}
 
-export const seed = ${str}.seeder.bind(${str}, 10);
-`
-			let seedName = `${str}Seed`;
-			fs.writeFile(`database/seeds/${seedName}.js`, seed, function (err) {
-				if (err) throw err;
-				console.log(`${seedName} is created successfully.`);
-			  });
 		  });
 	  });
 	
@@ -116,7 +126,7 @@ export const seed = ${str}.seeder.bind(${str}, 10);
 	export default new ${str};`;
 		fs.writeFile(`app/Helpers/${str}.js`, template, function (err) {
 			if (err) throw err;
-			console.log(`${str} is created successfully.`);
+			console.log(chalk.green(`${str} is created successfully.`));
 			let stream = fs.createWriteStream(`app/Helpers/index.js`, {flags:'a'});
 			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 		  });
@@ -135,7 +145,7 @@ export const seed = ${str}.seeder.bind(${str}, 10);
 	export default new ${str};`;
 		fs.writeFile(`app/Jobs/${str}.js`, template, function (err) {
 			if (err) throw err;
-			console.log(`${str} is created successfully.`);
+			console.log(chalk.green(`${str} is created successfully.`));
 			let stream = fs.createWriteStream(`app/Jobs/index.js`, {flags:'a'});
 			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 		  });
@@ -154,7 +164,7 @@ export const seed = ${str}.seeder.bind(${str}, 10);
 	export default new ${str};`;
 		fs.writeFile(`app/Repositories/${str}.js`, template, function (err) {
 			if (err) throw err;
-			console.log(`${str} is created successfully.`);
+			console.log(chalk.green(`${str} is created successfully.`));
 			let stream = fs.createWriteStream(`app/Repositories/index.js`, {flags:'a'});
 			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 		  });
@@ -177,7 +187,7 @@ export const seed = ${str}.seeder.bind(${str}, 10);
 	export default new ${str};`;
 		fs.writeFile(`app/Strategies/${str}.js`, template, function (err) {
 			if (err) throw err;
-			console.log(`${str} is created successfully.`);
+			console.log(chalk.green(`${str} is created successfully.`));
 			let stream = fs.createWriteStream(`app/Strategies/index.js`, {flags:'a'});
 			stream.write(`export { default as ${str} } from './${str}.js';`+ "\n" );
 		  });
