@@ -51,7 +51,7 @@ const command = () => {
 	  .option('-m', 'create migration also')
 	  .option('-s', 'create seed also')
 	  .action((str, options) => {
-		let template = `import { Model } from '@averoa/models';';
+		let template = `import { Model } from '@averoa/utilities';';
 
 class ${str} extends Model {
   static tableName = '${str.toLowerCase()}';
