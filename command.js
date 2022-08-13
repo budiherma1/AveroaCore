@@ -62,7 +62,6 @@ const command = async () => {
 		.argument('<string>', 'lis of DB name separated by comma, example: users,rooms,user_categories')
 		.option('-init', 'running it for the first time')
 		.action(async (stri, options) => {
-			console.log(options)
 			let splitStr = stri.split(',');
 			let tRoute = [];
 
@@ -110,8 +109,7 @@ const command = async () => {
 
 				});
 			}
-console.log(options.init)
-console.log(options.Init)
+
 			if (options.init || options.Init) {
 
 				// router
@@ -125,13 +123,11 @@ console.log(options.Init)
 					if (err) {
 					  return console.log(err);
 					}
-					// console.log(data);
+
 					let templateR = await edge.render('crud-router-additional', { data: tRoute })
 					const result = data.replace('export default router.router;', templateR);
-					// console.log(result);
 				  
 					fs.writeFile('routes/api.js', result, 'utf8', (err) => {
-					//   console.log(err);
 					  if (err) return console.log(err);
 					});
 				  });
