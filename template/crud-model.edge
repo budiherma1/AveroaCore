@@ -8,12 +8,12 @@ class {{model}} extends Model {
   static column = {
     id: {
       migration: (m) => m.table.increments(m.column).primary(),
-      method: { post: false },
+      flag: { required: false },
     },
     sample_column: {
       migration: (m) => m.table.string(m.column, 50).nullable(),
       seed: (f) => f.name.firstName(),
-      method: { get: true, post: true },
+      flag: { unique: true },
       validation: [{ run: (v) => v.validator.isEmail(v.value), msg: 'email format required' }],
     },
   };
