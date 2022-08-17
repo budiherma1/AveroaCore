@@ -59,7 +59,7 @@ const command = async () => {
 	// CRUD
 	program.command('make:crud')
 		.description('create set of crud')
-		.argument('<string>', 'lis of DB name separated by comma, example: users,rooms,user_categories')
+		.argument('<string>', 'list of DB name separated by comma, example: users,rooms,user_categories')
 		.option('-init', 'running it for the first time')
 		.action(async (stri, options) => {
 			let splitStr = stri.split(',');

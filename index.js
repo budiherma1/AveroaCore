@@ -16,9 +16,11 @@ import { AppProvider, ViewProvider } from '@averoa/providers';
 import * as Strategies from './../../../app/Strategies/index.js';
 import csrf from 'csurf';
 import cookieParser from 'cookie-parser';
+import chalk from 'chalk';
 
 const app = express()
 const port = process.env.APP_PORT;
+const urlHost = process.env.APP_HOST + ':' + port;
 const __dirname = path.resolve();
 const csrfProtection = csrf({ cookie: true })
 
@@ -60,12 +62,13 @@ export const start = async () => {
   app.use('/', webRoute)
   // app.use('/', csrfProtection, webRoute)
 
-  app.use(express.static(path.join(__dirname, '/public')));
+  app.use('/public', express.static(path.join(__dirname, '/public')));
+  app.use('/upload', express.static(path.join(__dirname, '/storages/upload')));
 
   AppProvider.end(app)
 
   app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`)
+    console.log(chalk.blueBright(`AveroaJS listening on ${urlHost}`))
   })
 }
 
