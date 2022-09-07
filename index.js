@@ -62,7 +62,7 @@ export const start = async () => {
   app.use('/', webRoute)
   // app.use('/', csrfProtection, webRoute)
 
-  app.use('/public', express.static(path.join(__dirname, '/public')));
+  app.use('/', express.static(path.join(__dirname, '/public')));
   app.use('/upload', express.static(path.join(__dirname, '/storages/upload')));
 
   AppProvider.end(app)
