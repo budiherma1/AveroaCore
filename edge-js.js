@@ -1,9 +1,10 @@
 'use strict';
 
 import {Edge} from 'edge.js';
-import path from 'path';
+// import path from 'path';
 let edge = new Edge({cache: false});
-const __dirname = path.resolve();
+// const __dirname = path.resolve();
+// edge.mount(path.join(__dirname, '/resources/views'))
 
 export var engine = function engine(req, res, next) {
   /*
@@ -48,6 +49,5 @@ export var engine = function engine(req, res, next) {
   next();
 };
 
-edge.mount(path.join(__dirname, '/resources/views'))
 
 export default edge
