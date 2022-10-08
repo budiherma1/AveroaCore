@@ -30,7 +30,7 @@ export const start = async () => {
   
   morgan(app);
   
-  // app.use(cors)
+  app.use(cors)
 
   app.use(session({
     secret: "secret",
