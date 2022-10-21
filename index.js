@@ -72,7 +72,5 @@ export const start = async () => {
   })
 }
 
-edge.mount(path.join(path.resolve(), '/resources/views'))
 export { default as env } from './env.js'
-export { default as edge } from './edge-js.js'
 export { default as command } from './command.js'
