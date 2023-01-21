@@ -58,8 +58,8 @@ export const start = async () => {
   app.use(bodyParser.urlencoded({ extended: true }))
   app.use(cookieParser())
   
-  app.use('/api', apiRoute)
-  app.use('/', webRoute)
+  app.use('/api', await apiRoute)
+  app.use('/', await webRoute)
   // app.use('/', csrfProtection, webRoute)
 
   app.use('/', express.static(path.join(__dirname, '/public')));
