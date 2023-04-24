@@ -1,11 +1,11 @@
 @each(route in data)
 router.crud('{{route.model}}', '{{route.path}}', () => {
-  router.get('/', '{{route.model}}Controller@findAll');
-  router.get('/:id', '{{route.model}}Controller@findOne');
-  router.post('/', '{{route.model}}Controller@create');
-  router.put('/:id', '{{route.model}}Controller@update');
-  router.delete('/:id', '{{route.model}}Controller@delete');
+router.get('/', '{{route.model}}Controller@findAll');
+router.get('/:id', '{{route.model}}Controller@findOne');
+router.post('/', '{{route.model}}Controller@create');
+router.put('/:id', '{{route.model}}Controller@update');
+router.delete('/:id', '{{route.model}}Controller@delete');
 });
 
 @end
-export default router.router;
+export default router;

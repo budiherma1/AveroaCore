@@ -116,21 +116,21 @@ const command = async () => {
 				let templateR = await edge.render('crud-router', { data: tRoute })
 				await fs.writeFile(`routes/api.js`, templateR, function (err) {
 					if (err) throw err;
-					console.log(chalk.green(`route aaa is created successfully.`));
+					console.log(chalk.green(`routes are created successfully.`));
 				});
 			} else {
 				fs.readFile('routes/api.js', 'utf8', async (err, data) => {
 					if (err) {
-					  return console.log(err);
+						return console.log(err);
 					}
 
 					let templateR = await edge.render('crud-router-additional', { data: tRoute })
-					const result = data.replace('export default router.router;', templateR);
-				  
+					const result = data.replace('export default router;', templateR);
+
 					fs.writeFile('routes/api.js', result, 'utf8', (err) => {
-					  if (err) return console.log(err);
+						if (err) return console.log(err);
 					});
-				  });
+				});
 			}
 
 
