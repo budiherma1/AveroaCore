@@ -74,6 +74,7 @@ const command = async () => {
 			for (let i in splitStr) {
 				let vstr = splitStr[i];
 				let str = titleCase(vstr);
+				let time = Number(new Date().getTime()) + i
 
 				let strContoller = str + 'Controller';
 				let template = await edge.render('crud-model', { model: str, db: vstr })
@@ -86,7 +87,7 @@ const command = async () => {
 					// migration
 					let migration = await edge.render('crud-migration', { migration: str })
 
-					let migrationName = `${new Date().getTime()}${i + 10}00_${str}`;
+					let migrationName = `${time}_${str}`;
 					await fs.writeFile(`database/migrations/${migrationName}.js`, migration, function (err) {
 						if (err) throw err;
 						console.log(chalk.green(`${migrationName} is created successfully.`));
@@ -94,7 +95,7 @@ const command = async () => {
 
 					// seed
 					let seed = await edge.render('crud-seed', { seed: str })
-					let seedName = `${new Date().getTime()}${i + 10}00_${str}`;
+					let seedName = `${time}_${str}`;
 					await fs.writeFile(`database/seeds/${seedName}.js`, seed, function (err) {
 						if (err) throw err;
 						console.log(chalk.green(`${seedName} is created successfully.`));
