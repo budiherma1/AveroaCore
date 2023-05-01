@@ -74,7 +74,7 @@ const command = async () => {
 			for (let i in splitStr) {
 				let vstr = splitStr[i];
 				let str = titleCase(vstr);
-				let time = Number(new Date().getTime()) + i
+				let time = Number(new Date().getTime()) + Number(i)
 
 				let strContoller = str + 'Controller';
 				let template = await edge.render('crud-model', { model: str, db: vstr })
