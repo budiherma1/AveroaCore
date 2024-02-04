@@ -15,7 +15,7 @@ let setConfig = {
   seeds: {
     directory: './../../../database/seeds'
   },
-  client: 'mysql',
+  client: process.env.DB_CLIENT || 'mysql',
   connection: {
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
