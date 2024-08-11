@@ -5,16 +5,10 @@
  */
 import dotenv from 'dotenv';
 dotenv.config({ silent: true, path: './../../../.env' })
-// import config from './../../../config/database.js';
+import config from './../../../config/database.js';
 
 let setConfig = {
   // ...config, 
-  migrations: {
-    directory: './../../../database/migrations'
-  },
-  seeds: {
-    directory: './../../../database/seeds'
-  },
   client: process.env.DB_CLIENT || 'mysql',
   connection: {
     host: process.env.DB_HOST,
@@ -23,6 +17,13 @@ let setConfig = {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME
   },
+  migrations: {
+    directory: './../../../database/migrations'
+  },
+  seeds: {
+    directory: './../../../database/seeds'
+  },
+  ...config(process),
 }
 export default {
 
