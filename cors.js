@@ -1,11 +1,15 @@
 import cors from 'cors';
 
-const whitelist = process.env.CORS_WHITELIST
-  ?.split(',')
-  .map(origin => origin.trim());
+const rawWhitelist = process.env.CORS_WHITELIST?.trim();
+const whitelist = rawWhitelist
+  ? rawWhitelist.split(',').map(origin => origin.trim()).filter(Boolean)
+  : null;
 
 function isAllowedOrigin(origin) {
   if (!origin) return true; // allow non-browser requests
+
+  // if no whitelist provided, allow all origins
+  if (!whitelist || whitelist.length === 0) return true;
 
   return whitelist.some(allowed => {
     // exact match
