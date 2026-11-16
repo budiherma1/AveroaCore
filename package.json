@@ -17,6 +17,9 @@
     "csrf.js",
     "uploads.js",
     "openapi.js",
+    "redis.js",
+    "session-store.js",
+    "rate-limit.js",
     "edge-js.js",
     "morgan.js",
     "knexfile.js",
@@ -49,11 +52,25 @@
   "peerDependencies": {
     "@averoa/routes": "^3.0.0",
     "@averoa/utilities": "^2.0.0",
+    "connect-redis": "^9.0.0",
     "edge.js": "^5.5.1",
     "express": "^5.1.0",
     "knex": "^3.1.0",
     "objection": "^3.1.5",
-    "passport": "^0.7.0"
+    "passport": "^0.7.0",
+    "rate-limit-redis": "^6.0.2",
+    "redis": "^5.0.0 || ^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "connect-redis": {
+      "optional": true
+    },
+    "rate-limit-redis": {
+      "optional": true
+    },
+    "redis": {
+      "optional": true
+    }
   },
   "dependencies": {
     "chalk": "^5.4.1",
@@ -61,6 +78,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.0",
+    "express-rate-limit": "^8.7.2",
     "express-session": "^1.18.1",
     "helmet": "^8.1.0",
     "morgan": "^1.10.0"
@@ -68,11 +86,14 @@
   "devDependencies": {
     "@seriousme/openapi-schema-validator": "^2.11.0",
     "better-sqlite3": "^11.10.0",
+    "connect-redis": "^9.0.0",
     "edge.js": "^5.5.1",
     "express": "^5.1.0",
     "knex": "^3.1.0",
     "objection": "^3.1.5",
     "passport": "^0.7.0",
+    "rate-limit-redis": "^6.0.2",
+    "redis": "^6.3.1",
     "zod": "^4.6.7"
   }
 }

@@ -15,6 +15,11 @@ import { registerViewEngine } from './edge-js.js';
 import { csrfProtection } from './csrf.js';
 import { uploadStatic } from './uploads.js';
 import { isOpenApiEnabled, mountOpenApi } from './openapi.js';
+import { createSessionStore, sessionStoreKind } from './session-store.js';
+import {
+  rateLimit, globalRateLimitOptions, prepareRateLimitStore, rateLimitStoreKind, setRateLimitLogger,
+} from './rate-limit.js';
+import { closeRedis } from './redis.js';
 
 const API_PREFIX = '/api';
 
@@ -103,7 +108,8 @@ export function sessionOptions({ extra, log = console } = {}) {
 
   if (!development && !options.store) {
     log.warn?.('@averoa/core: express-session is using the in-memory MemoryStore outside development/test; '
-      + 'it leaks memory and does not scale past one process. Return a `store` from AppProvider.session().');
+      + 'it leaks memory and does not scale past one process. Set SESSION_STORE=redis (with REDIS_URL) '
+      + 'or return a `store` from AppProvider.session().');
   }
 
   return options;
@@ -210,6 +216,23 @@ async function build(options = {}) {
 
   app.use(createCors());
 
+  // rate limiting: validate the settings (fail closed on typos), make sure a
+  // Redis store is reachable, then mount the global limiter before body
+  // parsing and sessions so rejected requests stay cheap
+  setRateLimitLogger(log);
+  sessionStoreKind();
+  rateLimitStoreKind();
+  await prepareRateLimitStore({ log });
+  const rateLimitDefaults = globalRateLimitOptions();
+  if (rateLimitDefaults.enabled) {
+    const { enabled: _enabled, ...defaults } = rateLimitDefaults;
+    const custom = AppProvider.rateLimit ? await AppProvider.rateLimit({ ...defaults }) : undefined;
+    if (custom !== false) {
+      const { path: limitPath = defaults.path, ...limitOptions } = { ...defaults, ...(custom ?? {}) };
+      app.use(limitPath, rateLimit(limitOptions));
+    }
+  }
+
   // body parsing
   const limit = process.env.BODY_LIMIT || '1mb';
   app.use(express.json({ limit }));
@@ -217,7 +240,16 @@ async function build(options = {}) {
   app.use(cookieParser());
 
   // session + passport
-  const extraSession = AppProvider.session ? await AppProvider.session() : undefined;
+  // AppProvider.session() wins: a `store` there means core creates none
+  let extraSession = AppProvider.session ? await AppProvider.session() : undefined;
+  if (extraSession?.store) {
+    if (sessionStoreKind() !== 'memory') {
+      log.warn?.('@averoa/core: SESSION_STORE is ignored because AppProvider.session() returns a store.');
+    }
+  } else {
+    const store = await createSessionStore({ log });
+    if (store) extraSession = { ...(extraSession ?? {}), store };
+  }
   app.use(session(sessionOptions({ extra: extraSession, log })));
   app.use(passport.initialize());
   app.use(passport.session());
@@ -333,6 +365,7 @@ export async function start(options = {}) {
         await Promise.allSettled([
           (await resolveKnex(utilities))?.destroy?.(),
           utilities.closeQueue?.(),
+          closeRedis(),
           closeLogStreams(),
         ]);
       } catch (err) {
@@ -352,5 +385,10 @@ export { closeLogStreams } from './morgan.js';
 export {
   buildOpenApiDocument, createOpenApiDocument, modelSchemas, isOpenApiEnabled,
 } from './openapi.js';
+export { createSessionStore, sessionStoreKind } from './session-store.js';
+export {
+  rateLimit, ipKeyGenerator, rateLimitStoreKind, globalRateLimitOptions, RATE_LIMIT_MESSAGE,
+} from './rate-limit.js';
+export { getRedisClient, closeRedis } from './redis.js';
 export { default as env } from './env.js';
 export { default as command } from './command.js';

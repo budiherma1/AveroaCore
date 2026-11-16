@@ -17,6 +17,37 @@
 - Exports `buildOpenApiDocument`, `createOpenApiDocument`, `modelSchemas`, `isOpenApiEnabled`; module
   `@averoa/core/openapi.js`.
 - devDependencies `@seriousme/openapi-schema-validator` (the tests validate the generated document) and `zod`.
+- **Redis session store.** `SESSION_STORE=redis` (with `REDIS_URL`) stores sessions with `connect-redis`;
+  `SESSION_REDIS_PREFIX` (default `sess:`) and `SESSION_TTL` (seconds, default 86400) configure it. `memory` stays the
+  default. A `store` returned by `AppProvider.session()` still wins (core then does not connect to Redis).
+- **Rate limiting** with `express-rate-limit` (new dependency). A global limiter is mounted on `/api` before body
+  parsing and sessions: `RATE_LIMIT_MAX` (default 100) requests per `RATE_LIMIT_WINDOW_MS` (default 60000) per client
+  IP, `RATE_LIMIT_ENABLED=false` turns it off, `AppProvider.rateLimit(defaults)` customises it (`false` disables it,
+  `path` moves it). Limiters send the IETF draft-8 `RateLimit` / `RateLimit-Policy` headers and `Retry-After`; over
+  the limit the error handler answers `429` with `{ status: false, message, code: 'ERATELIMIT' }` (JSON for `/api`
+  and JSON clients, HTML otherwise). The client IP follows `TRUST_PROXY`.
+- **`rateLimit(options)`** factory (exported from `@averoa/core` and `@averoa/core/rate-limit.js`, with
+  `ipKeyGenerator`) for stricter per-route limits, e.g. on a login route. `name` keeps each limiter's counters apart
+  in a shared store.
+- **Shared Redis store for rate limits.** `RATE_LIMIT_STORE=redis` (the default when `SESSION_STORE=redis`) keeps
+  counters in Redis with `rate-limit-redis`, so they are shared by every instance; `RATE_LIMIT_REDIS_PREFIX` (default
+  `rl:`) sets the key prefix.
+- **One shared Redis client** per `REDIS_URL` (`getRedisClient()`, `closeRedis()`), used by both stores and available
+  to the app. `start()` closes it on graceful shutdown. `REDIS_CONNECT_TIMEOUT` (default 5000 ms) bounds the startup
+  connection.
+- `redis`, `connect-redis` and `rate-limit-redis` are **optional peer dependencies**, imported only when a Redis
+  store is selected; a missing package stops startup with a message naming the `npm install` to run.
+
+### Security
+
+- **Redis stores fail closed at startup.** When a Redis store is selected and Redis is unreachable within
+  `REDIS_CONNECT_TIMEOUT`, `createApp()` / `start()` reject unless `NODE_ENV` is `development` or `test` (there a
+  warning is logged and the client keeps reconnecting; there is no silent fallback to memory). The Redis password is
+  redacted in every log and error message. The offline queue is disabled, so requests fail fast while Redis is down
+  instead of hanging.
+- **Invalid settings fail startup**: an unknown `SESSION_STORE` / `RATE_LIMIT_STORE`, or a non-positive-integer
+  `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`, `SESSION_TTL` or `REDIS_CONNECT_TIMEOUT`.
+- The MemoryStore warning now points to `SESSION_STORE=redis`.
 
 ## 2.0.1
 
