@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **OpenAPI 3.1 document** at `GET /api/openapi.json`, built from the API router's `describe()` (the `@averoa/routes`
+  release after 3.0.1), the Model `static column` definitions and `validate()` middleware (`@averoa/utilities`): paths with
+  `{param}` syntax, standard CRUD operations for `crud()` routes with the FilterSearch query parameters and the
+  `{ status, metadata, data }` envelope, model schemas (types from migration hints, required flags, hidden columns
+  excluded, upload columns as binary in multipart bodies), a JWT bearer scheme for routes behind `AuthMiddleware`,
+  and per-route `.doc({...})` metadata.
+- **Swagger UI page** at `GET /api/docs` (Swagger UI 5.34.1 from jsDelivr, pinned with SRI) with its own CSP (nonce,
+  no `unsafe-eval`); the app-wide helmet CSP is unchanged.
+- `OPENAPI_ENABLED` (default: on for `NODE_ENV` development/test only) and `OPENAPI_UI` (default on).
+- `AppProvider.openapi(doc, { routes })` to customise the document.
+- Exports `buildOpenApiDocument`, `createOpenApiDocument`, `modelSchemas`, `isOpenApiEnabled`; module
+  `@averoa/core/openapi.js`.
+- devDependencies `@seriousme/openapi-schema-validator` (the tests validate the generated document) and `zod`.
+
 ## 2.0.1
 
 ### Security

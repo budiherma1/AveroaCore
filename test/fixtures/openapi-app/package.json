@@ -1,0 +1,7 @@
+{
+  "name": "openapi-fixture",
+  "version": "1.2.3",
+  "description": "Fixture app for the OpenAPI tests",
+  "private": true,
+  "type": "module"
+}

@@ -16,6 +16,7 @@
     "cors.js",
     "csrf.js",
     "uploads.js",
+    "openapi.js",
     "edge-js.js",
     "morgan.js",
     "knexfile.js",
@@ -65,11 +66,13 @@
     "morgan": "^1.10.0"
   },
   "devDependencies": {
+    "@seriousme/openapi-schema-validator": "^2.11.0",
     "better-sqlite3": "^11.10.0",
     "edge.js": "^5.5.1",
     "express": "^5.1.0",
     "knex": "^3.1.0",
     "objection": "^3.1.5",
-    "passport": "^0.7.0"
+    "passport": "^0.7.0",
+    "zod": "^4.6.7"
   }
 }

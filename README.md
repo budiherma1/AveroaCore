@@ -22,6 +22,7 @@ The bootstrap package of AveroaJS: it builds a secure Express 5 application from
 - [Providers](#providers)
 - [Configuration](#configuration)
 - [Security](#security)
+- [API documentation (OpenAPI)](#api-documentation-openapi)
 - [Errors and 404](#errors-and-404)
 - [Views](#views)
 - [Graceful shutdown](#graceful-shutdown)
@@ -114,6 +115,10 @@ router, which has the required `init()` method.
 | `defaultHelmetOptions({ production? })` | function | Returns the default helmet options (the CSP below). |
 | `parseTrustProxy(value)` | function | Parses a `TRUST_PROXY` string for `app.set('trust proxy', ...)`. |
 | `closeLogStreams()` | async function | Closes the shared `access.log` / `error.log` streams (see [Application layout](#application-layout)). |
+| `buildOpenApiDocument(options)` | function | Builds an OpenAPI 3.1 document from `router.describe()` routes and models. See [API documentation](#api-documentation-openapi). |
+| `createOpenApiDocument({ prefix?, AppProvider?, utilities? })` | async function | The document `GET /api/openapi.json` serves, for the current app. |
+| `modelSchemas(Model)` | function | JSON Schemas of a Model (`read`, `create`, `update`, `createForm`, `updateForm`). |
+| `isOpenApiEnabled(env?)` | function | `OPENAPI_ENABLED`, defaulting to `true` only for `NODE_ENV` `development`/`test`. |
 
 Importing `@averoa/core` loads `<app root>/.env` as a side effect. Variables that already exist in `process.env` take
 precedence over the file.
@@ -187,6 +192,7 @@ The package exports `./knexfile` and every file through `./*`. Subpath imports o
 | `@averoa/core/command.js` | `command` (default), `buildProgram()`, `makeController`, `makeMiddleware`, `makeModel`, `makeHelper`, `makeJob`, `makeRepository`, `makeStrategy`, `makeCrud`, `validateName`, `validateTable`, `titleCase`, `migrationTimestamp`, `writeAppFile`, `addToIndex`, `TEMPLATE_DIR`, `VERSION` |
 | `@averoa/core/morgan.js` | default: `(app, { env? }) => { accessLogStream, errorLogStream }`; `closeLogStreams()`, `getLogStreams()` |
 | `@averoa/core/env.js` | default: `dotenv` (loads `<app root>/.env` on import) |
+| `@averoa/core/openapi.js` | the four OpenAPI exports above, plus `mountOpenApi(app, options)`, `isOpenApiUiEnabled`, `docsHtml`, `docsContentSecurityPolicy`, `SWAGGER_UI`, `DEFAULT_AUTH_MIDDLEWARE`, `OPENAPI_VERSION` |
 
 `createApp()` already installs all of these; the subpath modules are useful when you assemble a custom app or test a
 single piece. `csrfProtection()` defaults to `skip: []` and `sessionOnly: ['/api']`. `createCors()` accepts
@@ -235,7 +241,7 @@ stack.
 | 11 | `Model.knex(...)` with `getDB()` (or `DB`) from `@averoa/utilities` | utilities' database config |
 | 12 | Edge view engine, `ViewProvider.global()` globals and dot-notation `res.render` | `ViewProvider` |
 | 13 | CSRF protection | `CSRF_ENABLED` |
-| 14 | `routes/api.js` at `/api` | |
+| 14 | `routes/api.js` at `/api`, then `GET /api/openapi.json` and `GET /api/docs` when enabled | `OPENAPI_ENABLED`, `OPENAPI_UI`, `AppProvider.openapi(doc)` |
 | 15 | `routes/web.js` at `/` | |
 | 16 | `express.static(public/)` at `/` | |
 | 17 | sandboxed `express.static(storages/upload/)` at `/upload` | `AppProvider.uploads()`, `UPLOAD_INLINE_EXTENSIONS` |
@@ -269,6 +275,7 @@ export { default as ViewProvider } from './ViewProvider.js';
 | `helmet(defaults)` | during build | `defaultHelmetOptions()` result | helmet options to use; `false` disables helmet; `undefined` keeps the defaults |
 | `session()` | during build | none | extra express-session options merged over the defaults (e.g. `{ store }`), or `undefined` |
 | `uploads()` | during build | none | `{ inlineExtensions: string[] }`, `false` to not serve `/upload`, or `undefined` for the defaults |
+| `openapi(doc, { routes })` | on the first `GET /api/openapi.json` | generated OpenAPI document, `router.describe()` routes | the document to serve (change `doc` in place or return a new object); `undefined` keeps `doc` |
 | `end(app)` | during build, after routes and static files, before the 404 and error handlers | Express app | ignored |
 | `server(server)` | `start()` only, after `listen` succeeded | `http.Server` | ignored |
 | `shutdown()` | `start()` only, on SIGTERM/SIGINT after the server stopped accepting connections | none | awaited |
@@ -324,6 +331,8 @@ All variables are read from the environment after `<app root>/.env` is loaded.
 | `CORS_WHITELIST` | empty | Comma-separated allowed origins; `*` allows every origin without credentials. See [CORS](#cors). |
 | `TRUST_PROXY` | unset | Express `trust proxy`: `true`, `false`, a hop count or an address/subnet list. Set it behind a TLS-terminating proxy. See [`parseTrustProxy`](#parsetrustproxyvalue). |
 | `UPLOAD_INLINE_EXTENSIONS` | `jpg,jpeg,png,gif,webp,avif,bmp,ico` | Comma-separated extensions served inline from `/upload`; every other file is sent as a download. Case-insensitive, leading dots ignored. |
+| `OPENAPI_ENABLED` | `true` in `development` / `test`, otherwise `false` | Serves the generated OpenAPI document at `GET /api/openapi.json` (and the docs page). `false`, `0`, `no` or `off` disables it; any other non-empty value enables it, also in production. |
+| `OPENAPI_UI` | `true` | With `OPENAPI_ENABLED`, also serves the Swagger UI page at `GET /api/docs`. `false` keeps only the JSON document. |
 | `SHUTDOWN_TIMEOUT` | `10000` | Milliseconds before a forced `process.exit(1)` during graceful shutdown. `0` or a non-number falls back to the default. |
 | `AVEROA_ROOT` | auto-detected | App root directory. Set it when the process is not started from inside the project. |
 | `DB_CLIENT` | `mysql2` | knexfile only: knex client when `config/database.js` does not set one. |
@@ -347,6 +356,7 @@ error-detail behaviour. An unset `NODE_ENV`, `staging` or any other value is tre
 | Stack trace in error responses | yes | yes | no | no |
 | CSP `upgrade-insecure-requests` | no | no | yes | no |
 | Console request log (morgan `dev`) | yes | no | no | yes |
+| `/api/openapi.json` and `/api/docs` (without `OPENAPI_ENABLED`) | served | served | not served | not served |
 
 For local work over plain HTTP, set `NODE_ENV=development`: otherwise startup requires `SESSION_SECRET`, error details
 are hidden and the browser drops the `secure` session cookie.
@@ -501,6 +511,91 @@ not serve `/upload` at all.
 
 Core only serves the directory. Validating and storing uploads (size, type, file names) is up to the app; the
 boilerplate does this in its `UploadProvider`.
+
+## API documentation (OpenAPI)
+
+Core generates an [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0) document for the routes of `routes/api.js` and
+serves it at **`GET /api/openapi.json`**, with a [Swagger UI](https://swagger.io/tools/swagger-ui/) page at
+**`GET /api/docs`**. Both are on when `NODE_ENV` is `development` or `test` and off otherwise; set
+`OPENAPI_ENABLED=true` to publish them elsewhere (for example on an internal staging host), `OPENAPI_UI=false` to keep
+only the JSON. They are registered after the API router, so an app route with the same path wins.
+
+The document is built on the first request and cached for the life of the process. Building it needs a
+`@averoa/routes` release with `router.describe()` (after 3.0.1); with a plain Express router in `routes/api.js`, or an
+older `@averoa/routes`, the document has no paths.
+
+### What is generated
+
+| Source | Result |
+| --- | --- |
+| Every route of the API router (`router.describe()`) | A path (`/api/teachers/{id}`) and an operation per verb, with path parameters, an `operationId` from the handler (`TeacherController.findOne`) and a tag from the controller name (`Teacher`). `all()` routes have no single operation and are left out; when two routes share a method and path, the first one (the one Express answers with) is documented. |
+| `crud()` routes | Standard operations by verb: list (`GET` without a parameter), get by id, create (`POST`), update (`PUT` / `PATCH`), delete. The list documents the FilterSearch parameters (`limit`, `page`, `orderBy`, `orderByDesc`, `groupBy`, `$select`, `$relations`, `$relations-type`, `$withTrashed` when allowed, `$datatable`, `$draw`) and the `column:op=value` filters as a free-form `filters` object; responses use the `{ status, metadata, data }` envelope with the shared `Pagination` schema, plus 400 / 404 / 422 where they apply. |
+| Model `static column` | Component schemas per model: `<Model>` (response rows: hidden columns removed, audit columns added when `timestamp` is on), `<Model>Create` / `<Model>Update` (JSON bodies: `writableColumns()`, required flags, rule messages as descriptions) and `<Model>CreateForm` / `<Model>UpdateForm` for `*Form` routes, where `upload` columns are `format: binary`. Every model exported from `app/Models/index.js` is added, so `doc()` responses can `$ref` it. |
+| Column types | Read from the `migration` hint by running it against a recording fake table: `increments`/`integer`/`bigInteger` -> integer, `string(n)` -> string with `maxLength`, `float`/`double` -> number, `boolean` (`boolean` or `0`/`1` on reads), `uuid`, `date`, `datetime`/`timestamp` -> string, `enu` -> enum, nullability from `notNullable()`/`primary()`. Types that are not reliable across databases (`decimal`, `json`, `binary`, `specificType`, no `migration`) stay untyped. A column's `openapi: { ... }` object is merged into its schema. |
+| Middleware named `AuthMiddleware` | `security: [{ bearerAuth: [] }]` (HTTP bearer, JWT) and a 401 response. |
+| `validate()` middleware (`@averoa/utilities`) | Request body, query, path and header parameters from its JSON Schema (field definitions always; Standard Schemas when the library can export JSON Schema, e.g. zod 4.2+), and a 422 response. |
+| `.doc({...})` on a route | Overrides and additions, see below. |
+
+### `doc()` keys
+
+```js
+router.post('/auth/login', 'AuthController@login', [validate({ body: loginSchema })]).doc({
+  summary: 'Log in with email and password',
+  tags: ['Auth'],
+  responses: {
+    200: { description: 'Token issued', schema: { $ref: '#/components/schemas/Token' } },
+    401: 'Invalid email or password',
+  },
+});
+```
+
+| Key | Effect |
+| --- | --- |
+| `summary`, `description`, `operationId`, `deprecated` | Copied to the operation. |
+| `tags` | Replaces the default tag (model name, or controller name without `Controller`). |
+| `security` | `false` documents the route as public; an array replaces the detected requirement (`[{ bearerAuth: [] }]`). |
+| `request` | `{ body, query, params, headers, contentType }`: JSON Schema (or a Standard Schema with JSON Schema support) per part. `query` / `params` / `headers` are object schemas turned into parameters. Wins over `validate()` and crud schemas. `contentType` defaults to `application/json`, or `multipart/form-data` on `*Form` routes. |
+| `responses` | `{ [status]: string \| { description, schema } \| Response Object }`. A string is the description; `schema` (JSON Schema or Standard Schema) becomes `application/json` content. Merged over the generated responses. |
+| `parameters`, `requestBody` | Raw OpenAPI parameter list (merged by name and location) and request body (replaces the generated one). |
+| `exclude` | `true` leaves the route out of the document. |
+
+### Customising the document
+
+`AppProvider.openapi(doc, { routes })` receives the generated document before it is cached; change it in place or
+return a replacement:
+
+```js
+// app/Providers/AppProvider.js
+openapi(doc) {
+  doc.info.title = 'Acme API';
+  doc.servers = [{ url: 'https://api.acme.test' }];
+  doc.components.schemas.Token = {
+    type: 'object',
+    properties: { token: { type: 'string' }, type: { const: 'Bearer' }, expires_in: { type: 'string' } },
+  };
+  return doc;
+}
+```
+
+`info` defaults to the `name`, `version` and `description` of the app's `package.json`. To write the document to a
+file (for client generators or CI checks), call `createOpenApiDocument()` after `createApp()`:
+
+```js
+import fs from 'node:fs';
+import { createApp, createOpenApiDocument } from '@averoa/core';
+
+await createApp();
+fs.writeFileSync('openapi.json', JSON.stringify(await createOpenApiDocument(), null, 2));
+```
+
+### The docs page and CSP
+
+`/api/docs` loads Swagger UI 5.34.1 from jsDelivr, pinned by version and Subresource Integrity hashes. The app-wide
+helmet CSP stays unchanged; this page alone gets its own policy: `script-src 'self' 'nonce-<random>'
+https://cdn.jsdelivr.net` (a fresh nonce per request for the one inline bootstrap script, no `unsafe-eval`),
+`style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net`, `connect-src 'self'` (so "Try it out" only calls the app
+itself) and `frame-ancestors 'self'`. If the browser can't reach jsDelivr, use the JSON document with a local tool
+instead, or set `OPENAPI_UI=false`.
 
 ## Errors and 404
 

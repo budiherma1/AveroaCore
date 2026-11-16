@@ -14,6 +14,7 @@ import morgan, { closeLogStreams } from './morgan.js';
 import { registerViewEngine } from './edge-js.js';
 import { csrfProtection } from './csrf.js';
 import { uploadStatic } from './uploads.js';
+import { isOpenApiEnabled, mountOpenApi } from './openapi.js';
 
 const API_PREFIX = '/api';
 
@@ -247,6 +248,9 @@ async function build(options = {}) {
   if (csrfEnabled) app.use(csrfProtection({ sessionOnly: [API_PREFIX] }));
 
   if (apiRouter) app.use(API_PREFIX, apiRouter);
+
+  // OpenAPI document (+ Swagger UI): OPENAPI_ENABLED, default on for development/test only
+  if (isOpenApiEnabled()) mountOpenApi(app, { prefix: API_PREFIX, AppProvider, utilities });
   if (webRouter) app.use('/', webRouter);
 
   app.use('/', express.static(appPath('public')));
@@ -345,5 +349,8 @@ export async function start(options = {}) {
 }
 
 export { closeLogStreams } from './morgan.js';
+export {
+  buildOpenApiDocument, createOpenApiDocument, modelSchemas, isOpenApiEnabled,
+} from './openapi.js';
 export { default as env } from './env.js';
 export { default as command } from './command.js';
