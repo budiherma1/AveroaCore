@@ -228,6 +228,7 @@ The package exports `./knexfile` and every file through `./*`. Subpath imports o
 | `@averoa/core/openapi.js` | the four OpenAPI exports above, plus `mountOpenApi(app, options)`, `isOpenApiUiEnabled`, `docsHtml`, `docsContentSecurityPolicy`, `SWAGGER_UI`, `DEFAULT_AUTH_MIDDLEWARE`, `OPENAPI_VERSION` |
 | `@averoa/core/rate-limit.js` | `rateLimit(options?)` (default), `ipKeyGenerator`, `rateLimitStoreKind`, `globalRateLimitOptions`, `prepareRateLimitStore`, `setRateLimitLogger`, `rateLimitError`, `RedisRateLimitStore`, `RATE_LIMIT_STORES`, `RATE_LIMIT_MESSAGE` |
 | `@averoa/core/session-store.js` | `createSessionStore({ log? })`, `sessionStoreKind`, `SESSION_STORES` |
+| `@averoa/core/testing.js` | `testApp(options?)`, `client(baseUrl, options?)`, `fakeMail()` (see [Testing](#testing)) |
 | `@averoa/core/redis.js` | `getRedisClient`, `closeRedis`, `loadOptional(name, feature)`, `redactRedisUrl`, `setModuleLoader` (tests only) |
 
 `createApp()` already installs all of these; the subpath modules are useful when you assemble a custom app or test a
@@ -1023,7 +1024,7 @@ Rules shared by every generator:
 | policy | A class with `before(user)` (admins pass: `user.isAdmin?.() === true`) and `view`, `create`, `update`, `delete` abilities; `update` and `delete` allow the owner (`record.user_id === user.id`). The file exports the class, ready for `Gate.policy(Model, Policy)`; `--model` defaults to the name without a trailing `Policy`. |
 | validator | An instance with two `validate()` rule sets from `@averoa/utilities`: `store` (JSON body) and `index` (query string), used as route middleware (`[PostValidator.store]`); failures answer 422. |
 | migration | `up(knex)` / `down(knex)`. `--create posts` creates and drops a `posts` table (`id`, timestamps), `--table posts` alters it, with neither the bodies are comments. |
-| test | A `node:test` file that calls `setTestEnv()` from the boilerplate's `tests/helpers.js`. `--http` builds the app with `createApp()`, migrates and seeds the test database, listens on a random port and tests `GET /api` with `client()`; it closes the server, database, queue and Redis afterwards. |
+| test | A `node:test` file that calls `setTestEnv()` from the boilerplate's `tests/helpers.js`. `--http` starts the app with `testApp()` from `@averoa/core/testing.js` (migrated, seeded, random port), tests `GET /api` with `app.http()` and closes it afterwards. |
 | helper | A class with a static `sample()` method; the file exports the class. |
 | job | A class extending `Job` from `@averoa/utilities` (the `Job` export added after utilities 2.0.2) with `tries = 3`, `backoff = [10000, 60000]`, `timeout = 60000`, an empty `handle(payload, context)` and `failed(payload, error, context)`; the file exports the class, so `<Name>.dispatch(payload)` queues it and `npm run worker:jobs` runs it. |
 | repository | A class with a `sample()` method; the file exports an instance. |
@@ -1163,39 +1164,58 @@ packages (dev dependencies). `.github/workflows/release.yml` publishes to npm wh
 
 ### Your application
 
-`createApp()` builds the real app without listening, which makes it a good fit for HTTP tests. Set `AVEROA_ROOT` and
-`NODE_ENV` before importing `@averoa/core`, because the app root and `.env` are resolved on import.
+`@averoa/core/testing` starts the real app for HTTP tests: `testApp()` builds it with `createApp()`, migrates and
+seeds the database, and listens on a random port.
 
 ```js
-// tests/app.test.js
-import { test, after } from 'node:test';
+// tests/posts.test.js
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
+import { testApp, fakeMail } from '@averoa/core/testing.js';
 
 process.env.NODE_ENV = 'test';
-process.env.AVEROA_ROOT ??= process.cwd();
+process.env.DB_CLIENT = 'better-sqlite3';
+process.env.DB_NAME = ':memory:';
 
-const { createApp, closeLogStreams, closeRedis } = await import('@averoa/core');
-const { DB } = await import('@averoa/utilities');
-
-const { app } = await createApp();
-const server = app.listen(0, '127.0.0.1');
-await once(server, 'listening');
-const base = `http://127.0.0.1:${server.address().port}`;
-
-after(async () => {
-  server.close();
-  await closeLogStreams();
-  await closeRedis(); // only needed with a Redis store; otherwise a no-op
-  await DB?.destroy?.();
-});
+let app;
+before(async () => { app = await testApp(); });
+after(() => app?.close());
 
 test('unknown API routes return JSON 404', async () => {
-  const res = await fetch(`${base}/api/does-not-exist`);
+  const res = await app.http('GET', '/api/does-not-exist');
   assert.equal(res.status, 404);
-  assert.equal((await res.json()).status, false);
+  assert.equal(res.body.status, false);
+});
+
+test('the contact form mails the team', async () => {
+  const mail = await fakeMail();
+  try {
+    const res = await app.http('POST', '/api/contact', { body: { message: 'Hello' } });
+    assert.equal(res.status, 200, res.text);
+    assert.equal(mail.to('team@example.test')[0].subject, 'Contact form');
+  } finally {
+    mail.restore();
+  }
 });
 ```
+
+`@averoa/core/testing` has no top-level imports, so importing it statically is safe. Set `NODE_ENV`, `AVEROA_ROOT`
+(default: the current directory) and the `DB_*` variables before `testApp()` runs or anything imports
+`@averoa/utilities`, which builds the database connection on first import. The boilerplate's `tests/helpers.js`
+(`setTestEnv()`) does this.
+
+| Export | Description |
+| --- | --- |
+| `testApp(options?)` | Resolves `{ app, server, health, url, DB, http, close }`. Options: `migrate` (default `true`), `seed` (default `true`), `fresh` (roll every migration back first; default `true` unless the database is in-memory SQLite), `timeout` (per request, default 5000 ms), `host` (default `127.0.0.1`), plus `createApp()` options. `fresh` runs only with `NODE_ENV=test`: anything else throws before the app is built, so a test can never wipe another database. `close()` closes the server, the database, the queue connection, Redis and the log streams. |
+| `app.http(method, url, { body, form, token, headers }?)` | `fetch` against the app. `body` is sent as JSON, `form` as `FormData` / `URLSearchParams`, `token` as `Authorization: Bearer`. Resolves `{ status, headers, body, text }`, where `body` is the parsed JSON (or `undefined`). A request that does not answer within `timeout` fails with `GET /x did not respond within 5000ms`. |
+| `client(baseUrl, { timeout, headers }?)` | The same request function for any server. |
+| `fakeMail()` | Resolves `{ sent, to(address), clear(), restore() }`: `Mail` from `@averoa/utilities` records messages instead of sending them, both direct sends and `.queue()` ones. Mail sent after the response (in the background) is recorded when it is sent, so wait for that work first. Each entry is the message (`from`, `to`, `subject`, `text`, `html`, ...) plus `queue` (the queue name, or `null` for a direct send). `to()` matches case-insensitively and accepts `Name <address>` forms. |
+
+For jobs use `fakeJobs()` from `@averoa/utilities`: `dispatch()` then records `{ job, payload, queue, delay }` instead
+of publishing.
+
+Without the helper, `createApp()` builds the app without listening; listen on port 0 and close the server, the
+database (`DB.destroy()`), `closeRedis()` and `closeLogStreams()` yourself.
 
 With `NODE_ENV=test` the session cookie is not `secure` (so it works over plain HTTP) and the console request log is
 off. Access and error logs are still written to `storages/logs/`. Calling `createApp()` in several test files or

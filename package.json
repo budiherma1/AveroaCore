@@ -1,6 +1,6 @@
 {
   "name": "@averoa/core",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Core of AveroaJS: builds the Express 5 app (security headers, sessions, CSRF, CORS, views, routes, error handling) and the averoa CLI",
   "main": "index.js",
   "types": "./index.d.ts",
@@ -32,6 +32,8 @@
     "csrf.d.ts",
     "uploads.js",
     "uploads.d.ts",
+    "testing.js",
+    "testing.d.ts",
     "openapi.js",
     "openapi.d.ts",
     "redis.js",

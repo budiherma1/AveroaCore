@@ -428,9 +428,9 @@ test('make:test writes unit and HTTP tests, accepting a .test.js suffix', async 
   await run('make:test', 'notes');
   await run('make:test', 'notes-api.test.js', '--http');
   assert.match(read('tests/notes.test.js'), /setTestEnv\(\);/);
-  assert.doesNotMatch(read('tests/notes.test.js'), /createApp/);
+  assert.doesNotMatch(read('tests/notes.test.js'), /testApp/);
   const httpTest = read('tests/notes-api.test.js');
-  assert.match(httpTest, /createApp\(\)/);
+  assert.match(httpTest, /await testApp\(\)/);
   assert.match(httpTest, /describe\('notes-api'/);
   assert.match(httpTest, /npm test -- tests\/notes-api\.test\.js/);
   await assert.rejects(() => run('make:test', '../evil'), /Invalid test name/);

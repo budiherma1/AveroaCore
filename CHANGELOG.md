@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.3.0
+
+### Added
+
+- **`@averoa/core/testing`**: `testApp()` builds the app, migrates and seeds the database and listens on a random
+  port; `app.http()` sends JSON, forms and bearer tokens and times out instead of hanging; `close()` closes the
+  server, database, queue, Redis and log streams. `fresh` (roll every migration back first) runs only with
+  `NODE_ENV=test`. `fakeMail()` records direct and queued `Mail` sends. `client()` is the request function on its own.
+- `make:test --http` generates a test built on `testApp()`.
+
 ## 2.2.0
 
 ### Added

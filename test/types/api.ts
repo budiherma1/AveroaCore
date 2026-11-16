@@ -37,6 +37,9 @@ import { REQUEST_ID_MAX_LENGTH } from '@averoa/core/request-id.js';
 import createCors from '@averoa/core/cors.js';
 import { csrfProtection } from '@averoa/core/csrf.js';
 import {
+  testApp, client, fakeMail, type TestResponse,
+} from '@averoa/core/testing.js';
+import {
   buildProgram, makeModel, makePolicy, makeMigration, makeTest, makeValidator,
 } from '@averoa/core/command.js';
 
@@ -182,6 +185,21 @@ export const id: string | undefined = currentRequestId() ?? requestContext.getSt
 export const parsed = env.parse('A=1');
 export const cli: Promise<void> = command(['node', 'averoa', 'make:model', 'User']);
 export const program = buildProgram().name();
+export async function testing() {
+  const t = await testApp({ seed: false, fresh: true, timeout: 1000 });
+  const res: TestResponse<{ ok: boolean }> = await t.http<{ ok: boolean }>('POST', '/api/x', { body: { a: 1 }, token: 't' });
+  const ok: boolean = res.body.ok;
+  const status: number = (await client(t.url, { headers: { 'x-a': '1' } })('GET', '/')).status;
+  const mail = await fakeMail();
+  const queue: string | null = mail.to('a@b.test')[0]?.queue ?? null;
+  mail.restore();
+  await t.DB('users').select('id');
+  await t.close();
+  // @ts-expect-error -- migrate is a boolean
+  await testApp({ migrate: 'yes' });
+  return { ok, status, queue };
+}
+
 export async function generators() {
   await makeModel('Post', { table: 'posts', migration: true, seed: true });
   await makePolicy('PostPolicy', { model: 'Post' });

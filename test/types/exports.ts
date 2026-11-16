@@ -16,6 +16,7 @@ import type * as m_rate_limit from '../../rate-limit.js';
 import type * as m_redis from '../../redis.js';
 import type * as m_request_id from '../../request-id.js';
 import type * as m_session_store from '../../session-store.js';
+import type * as m_testing from '../../testing.js';
 import type * as m_uploads from '../../uploads.js';
 
 /** Exported at runtime but not declared. */
@@ -94,6 +95,11 @@ export const m_request_id_not_at_runtime: NotAtRuntime<m_request_id_runtime, typ
 type m_session_store_runtime = 'SESSION_STORES' | 'createSessionStore' | 'sessionStoreKind';
 export const m_session_store_undeclared: Undeclared<m_session_store_runtime, typeof m_session_store> = true;
 export const m_session_store_not_at_runtime: NotAtRuntime<m_session_store_runtime, typeof m_session_store> = true;
+
+// testing.js
+type m_testing_runtime = 'client' | 'fakeMail' | 'testApp';
+export const m_testing_undeclared: Undeclared<m_testing_runtime, typeof m_testing> = true;
+export const m_testing_not_at_runtime: NotAtRuntime<m_testing_runtime, typeof m_testing> = true;
 
 // uploads.js
 type m_uploads_runtime = 'DEFAULT_INLINE_EXTENSIONS' | 'UPLOAD_CSP' | 'default' | 'resolveInlineExtensions' | 'uploadStatic';
