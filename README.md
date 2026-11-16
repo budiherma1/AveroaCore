@@ -1085,6 +1085,10 @@ The repository's `.npmrc` sets `legacy-peer-deps=true`. To run the tests against
 `../AveroaUtilities` and `../AveroaRoute` instead of the published versions, run `node scripts/link-siblings.mjs`
 after every `npm install`.
 
+`npm install` also installs the published peer dependencies (`@averoa/utilities`, `@averoa/routes`, Express, knex,
+Objection, Edge, Passport), so the suite runs against the released siblings. To run it against local checkouts of
+`../AveroaUtilities` and `../AveroaRoute` instead, run `node scripts/link-siblings.mjs` after every `npm install`.
+
 GitHub Actions (`.github/workflows/ci.yml`) runs `npm test` on Node.js 20, 22 and 24 against the published sibling
 packages (dev dependencies). `.github/workflows/release.yml` publishes to npm when a `vX.Y.Z` tag matching
 `package.json` is pushed, after the same checks; it needs an `NPM_TOKEN` repository secret.

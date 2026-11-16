@@ -48,6 +48,7 @@
 - **Invalid settings fail startup**: an unknown `SESSION_STORE` / `RATE_LIMIT_STORE`, or a non-positive-integer
   `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`, `SESSION_TTL` or `REDIS_CONNECT_TIMEOUT`.
 - The MemoryStore warning now points to `SESSION_STORE=redis`.
+
 ### Added (observability)
 
 - **Request IDs.** A new first middleware sets `req.id`, the `X-Request-Id` response header and an
@@ -72,6 +73,13 @@
   `accessLogSettings`, `jsonAccessFormat`.
 - `start()` also resolves `health` and `close()` (graceful shutdown without `process.exit`, resolves the exit code);
   `createApp()` also resolves `health`.
+
+### Changed
+
+- **Removed the repository `.npmrc` (`legacy-peer-deps=true`).** `@averoa/utilities` and `@averoa/routes` are
+  published, so `npm install` now installs the peer dependencies normally and the tests run against the released
+  siblings. `node scripts/link-siblings.mjs` still swaps in local checkouts. Development only; the published package
+  is unchanged.
 
 ## 2.0.1
 
