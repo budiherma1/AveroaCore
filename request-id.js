@@ -48,15 +48,12 @@ const envFlag = (value) => {
 };
 
 /**
- * Whether an incoming request id header is trusted.
- * TRUST_REQUEST_ID wins; unset → trusted only when TRUST_PROXY is set to
- * something other than false / 0.
+ * Whether an incoming request id header is trusted: only with
+ * TRUST_REQUEST_ID=true. Common proxies (nginx, AWS ALB) pass a client's
+ * X-Request-Id through unchanged, so TRUST_PROXY alone is no reason to trust it.
  */
 export function trustIncomingRequestId(env = process.env) {
-  const explicit = envFlag(env.TRUST_REQUEST_ID);
-  if (explicit !== undefined) return explicit;
-  const proxy = String(env.TRUST_PROXY ?? '').trim().toLowerCase();
-  return proxy !== '' && proxy !== 'false' && proxy !== '0';
+  return envFlag(env.TRUST_REQUEST_ID) === true;
 }
 
 const CONTEXT = Symbol('averoa.requestContextStore');

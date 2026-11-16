@@ -90,12 +90,12 @@ test('request id: validation limits', () => {
   assert.equal(isValidRequestId('quote"'), false);
 });
 
-test('request id: trusted only with TRUST_REQUEST_ID, or TRUST_PROXY when TRUST_REQUEST_ID is unset', () => {
+test('request id: trusted only with TRUST_REQUEST_ID=true (TRUST_PROXY alone is not enough)', () => {
   assert.equal(trustIncomingRequestId({}), false);
   assert.equal(trustIncomingRequestId({ TRUST_PROXY: 'false' }), false);
-  assert.equal(trustIncomingRequestId({ TRUST_PROXY: '0' }), false);
-  assert.equal(trustIncomingRequestId({ TRUST_PROXY: '1' }), true);
-  assert.equal(trustIncomingRequestId({ TRUST_PROXY: 'loopback' }), true);
+  assert.equal(trustIncomingRequestId({ TRUST_PROXY: '1' }), false);
+  assert.equal(trustIncomingRequestId({ TRUST_PROXY: 'loopback' }), false);
+  assert.equal(trustIncomingRequestId({ TRUST_PROXY: '1', TRUST_REQUEST_ID: 'true' }), true);
   assert.equal(trustIncomingRequestId({ TRUST_PROXY: 'true', TRUST_REQUEST_ID: 'false' }), false);
   assert.equal(trustIncomingRequestId({ TRUST_REQUEST_ID: 'true' }), true);
 });
@@ -147,8 +147,8 @@ test('request id: a valid incoming id is accepted when trusted; invalid ones are
   });
 });
 
-test('request id: an incoming id is ignored unless trusted (no TRUST_PROXY / TRUST_REQUEST_ID=false)', async () => {
-  for (const vars of [{}, { TRUST_PROXY: '1', TRUST_REQUEST_ID: 'false' }]) {
+test('request id: an incoming id is ignored unless TRUST_REQUEST_ID=true (TRUST_PROXY alone is not enough)', async () => {
+  for (const vars of [{}, { TRUST_PROXY: '1', TRUST_REQUEST_ID: 'false' }, { TRUST_PROXY: 'loopback' }]) {
     await withEnv(vars, async () => {
       const { app } = await createApp();
       await withServer(app, async (url) => {
@@ -157,11 +157,11 @@ test('request id: an incoming id is ignored unless trusted (no TRUST_PROXY / TRU
       });
     });
   }
-  await withEnv({ TRUST_PROXY: 'loopback' }, async () => {
+  await withEnv({ TRUST_PROXY: 'loopback', TRUST_REQUEST_ID: 'true' }, async () => {
     const { app } = await createApp();
     await withServer(app, async (url) => {
       const res = await fetch(`${url}/api/ping`, { headers: { 'x-request-id': 'from-proxy' } });
-      assert.equal(res.headers.get('x-request-id'), 'from-proxy', 'TRUST_PROXY set → trusted');
+      assert.equal(res.headers.get('x-request-id'), 'from-proxy', 'TRUST_REQUEST_ID=true → trusted');
     });
   });
 });

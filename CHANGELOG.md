@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.1
+
+### Changed
+
+- **An incoming `X-Request-Id` is trusted only with `TRUST_REQUEST_ID=true`.** Before, `TRUST_PROXY` alone made it
+  trusted, but common proxies (nginx, AWS ALB) pass a client's header through unchanged, so clients could pick the id
+  that ends up in your logs. If your proxy sets or overwrites the header, set `TRUST_REQUEST_ID=true` to keep using
+  its ids.
+
+### Documentation
+
+- A second `SIGTERM` / `SIGINT` during a graceful shutdown ends the process at once (Node.js default).
+
 ## 2.1.0
 
 ### Upgrade notes (behaviour changes)

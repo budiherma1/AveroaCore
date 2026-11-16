@@ -439,7 +439,7 @@ All variables are read from the environment after `<app root>/.env` is loaded.
 | `OPENAPI_UI` | `true` | With `OPENAPI_ENABLED`, also serves the Swagger UI page at `GET /api/docs`. `false` keeps only the JSON document. |
 | `SHUTDOWN_TIMEOUT` | `10000` | Milliseconds before a forced `process.exit(1)` during graceful shutdown (counted after `SHUTDOWN_DELAY`). `0` or a non-number falls back to the default. |
 | `SHUTDOWN_DELAY` | `0` | Milliseconds between "readiness answers 503" and closing the server on SIGTERM/SIGINT, so load balancers stop routing to the instance first. |
-| `TRUST_REQUEST_ID` | trust only when `TRUST_PROXY` is set | `true` reuses a valid incoming `X-Request-Id`, `false` always generates a new one. See [Request IDs](#request-ids). |
+| `TRUST_REQUEST_ID` | `false` | `true` reuses a valid incoming `X-Request-Id` (only when your proxy sets or overwrites it); otherwise a new one is generated. See [Request IDs](#request-ids). |
 | `REQUEST_ID_HEADER` | `X-Request-Id` | Header read and written for the request id. |
 | `HEALTH_PATH` | `/health` | Liveness path; `false`, `off` or `none` disables it. |
 | `READY_PATH` | `/ready` | Readiness path; `false`, `off` or `none` disables it. |
@@ -858,9 +858,9 @@ The first middleware gives every request an id:
 An incoming `X-Request-Id` is reused only when it is **trusted** and **valid**; otherwise a new
 `crypto.randomUUID()` is generated (and the incoming value is ignored, not echoed):
 
-- trusted: `TRUST_REQUEST_ID=true`, or `TRUST_REQUEST_ID` unset and `TRUST_PROXY` set to anything but `false` / `0`
-  (a proxy that sets or sanitises the header is expected in front of the app). `TRUST_REQUEST_ID=false` never trusts
-  it, which also suits a proxy that passes the client's header through unchanged;
+- trusted: only with `TRUST_REQUEST_ID=true`. Set it when a proxy in front of the app sets or overwrites the header;
+  common proxies (nginx, AWS ALB) pass a client's `X-Request-Id` through unchanged, so `TRUST_PROXY` alone does not
+  make it trusted;
 - valid: 1 to 128 characters from `A-Z a-z 0-9 - _ . : + = / @`.
 
 The context is shared with `@averoa/utilities` through a global registered symbol, so it works even when the two
@@ -949,6 +949,10 @@ Return `false` to disable both endpoints, or delete a key to drop a built-in che
 
 If steps 2 to 4 take longer than `SHUTDOWN_TIMEOUT` milliseconds (default 10000), the process exits with code `1`.
 With Kubernetes, keep `terminationGracePeriodSeconds` above `SHUTDOWN_DELAY + SHUTDOWN_TIMEOUT`.
+
+A **second** `SIGTERM` / `SIGINT` (pressing Ctrl-C twice) is not handled: Node.js's default action ends the process at
+once, without the steps above. That is the usual "force quit" during development; a process manager that sends
+`SIGTERM` repeatedly should wait `SHUTDOWN_DELAY + SHUTDOWN_TIMEOUT` between attempts.
 
 ## CLI reference
 
