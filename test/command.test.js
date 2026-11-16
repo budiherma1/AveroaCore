@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'averoa-cli-')));
 process.env.AVEROA_ROOT = tmp;
@@ -88,6 +89,40 @@ test('make:strategy template invokes the passport middleware', async () => {
   const src = read('app/Strategies/ApiKeyStrategy.js');
   assert.match(src, /\}\)\(req, res, next\);/);
   assert.match(read('app/Strategies/index.js'), /export \{ default as ApiKeyStrategy \} from '\.\/ApiKeyStrategy\.js';/);
+});
+
+test('make:job generates a Job subclass that runs with dispatchSync', async () => {
+  await run('make:job', 'ReportJob');
+  const src = read('app/Jobs/ReportJob.js');
+  assert.match(src, /import \{ Job \} from '@averoa\/utilities';/);
+  assert.match(src, /class ReportJob extends Job \{/);
+  assert.match(src, /async handle\(payload, context\)/);
+  assert.match(src, /async failed\(payload, error, context\)/);
+  assert.match(src, /export default ReportJob;/);
+  assert.match(read('app/Jobs/index.js'), /export \{ default as ReportJob \} from '\.\/ReportJob\.js';/);
+
+  // run the generated class against this package's @averoa/utilities, in a child process
+  const nodeModules = path.join(tmp, 'node_modules');
+  fs.symlinkSync(fileURLToPath(new URL('../node_modules', import.meta.url)), nodeModules, 'dir');
+  try {
+    const { execFileSync } = await import('node:child_process');
+    const script = `
+      import { Job } from '@averoa/utilities';
+      import ReportJob from './app/Jobs/ReportJob.js';
+      const result = await ReportJob.dispatchSync({ id: 1 });
+      console.log(JSON.stringify({
+        isJob: ReportJob.prototype instanceof Job, tries: ReportJob.tries, timeout: ReportJob.timeout, result: result ?? null,
+      }));
+      process.exit(0);`;
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: tmp, env: { ...process.env, AVEROA_ROOT: tmp, LOG_LEVEL: 'error' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    assert.deepEqual(JSON.parse(out.trim().split('\n').at(-1)), {
+      isJob: true, tries: 3, timeout: 60000, result: null,
+    });
+  } finally {
+    fs.rmSync(nodeModules);
+  }
 });
 
 test('generated files are valid JavaScript', async () => {

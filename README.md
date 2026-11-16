@@ -603,7 +603,8 @@ Rules shared by every generator:
 | middleware | A class with `handle(req, res, next)`; the file exports an instance. |
 | model | A class extending `Model` from `@averoa/utilities` with `tableName`, `timestamp = true`, `hidden = []` and a sample `column` map (`id`, `email` with migration, seed and validation rules). The table defaults to the lower-cased name (`UserCategory` → `usercategory`); use `--table user_categories` to set it. |
 | helper | A class with a static `sample()` method; the file exports the class. |
-| job, repository | A class with a `sample()` method; the file exports an instance. |
+| job | A class extending `Job` from `@averoa/utilities` (the `Job` export added after utilities 2.0.2) with `tries = 3`, `backoff = [10000, 60000]`, `timeout = 60000`, an empty `handle(payload, context)` and `failed(payload, error, context)`; the file exports the class, so `<Name>.dispatch(payload)` queues it and `npm run worker:jobs` runs it. |
+| repository | A class with a `sample()` method; the file exports an instance. |
 | strategy | A class with `config()` (called once at startup; register your passport strategy there) and an `authenticate(req, res, next)` route middleware that runs `passport.authenticate('<name>', { session: false })` and responds `401 { status: false, message: 'Unauthorized' }` when no user is found. |
 
 ### `make:crud`
