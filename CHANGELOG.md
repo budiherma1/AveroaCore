@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Removed the repository `.npmrc` (`legacy-peer-deps=true`).** `@averoa/utilities` and `@averoa/routes` are
+  published, so `npm install` now installs the peer dependencies normally and the tests run against the released
+  siblings. `node scripts/link-siblings.mjs` still swaps in local checkouts. Development only; the published package
+  is unchanged.
+
 ## 2.0.1
 
 ### Security

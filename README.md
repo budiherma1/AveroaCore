@@ -709,9 +709,9 @@ The suite uses the built-in `node:test` runner against a fixture app in `test/fi
 bootstrap, sessions, CSRF, CORS, uploads, the view engine, the error handler, the CLI generators and the knexfile
 (including a real `knex migrate` run with `better-sqlite3`, a dev dependency).
 
-The repository's `.npmrc` sets `legacy-peer-deps=true`. To run the tests against local checkouts of
-`../AveroaUtilities` and `../AveroaRoute` instead of the published versions, run `node scripts/link-siblings.mjs`
-after every `npm install`.
+`npm install` also installs the published peer dependencies (`@averoa/utilities`, `@averoa/routes`, Express, knex,
+Objection, Edge, Passport), so the suite runs against the released siblings. To run it against local checkouts of
+`../AveroaUtilities` and `../AveroaRoute` instead, run `node scripts/link-siblings.mjs` after every `npm install`.
 
 ### Your application
 
