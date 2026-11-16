@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Command } from 'commander';
@@ -15,6 +16,9 @@ import { appPath } from '@averoa/utilities/paths';
  */
 
 export const TEMPLATE_DIR = fileURLToPath(new URL('./template/', import.meta.url));
+
+/** This package's version (shown by `averoa --version`). */
+export const VERSION = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 
 let templates;
 const renderTemplate = (name, data) => {
@@ -44,14 +48,29 @@ export function validateTable(name) {
   return name;
 }
 
-/** users_categories → UsersCategories */
+/**
+ * PascalCase a table name. Words are split on `_` and `-`; the first letter of
+ * each is upper-cased and the rest is kept as typed:
+ * users_categories → UsersCategories, user-categories → UserCategories,
+ * userCategories → UserCategories.
+ */
 export function titleCase(str) {
-  return str.toLowerCase().split('_').filter(Boolean)
+  return str.split(/[_-]+/).filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join('');
 }
 
 const rel = (abs) => path.relative(appPath(), abs) || abs;
+
+/**
+ * Migration/seed timestamp in the knex `migrate:make` format: 14-digit UTC
+ * YYYYMMDDHHMMSS, so generated files sort together with knex-made ones.
+ */
+export function migrationTimestamp(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}`
+    + `${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}`;
+}
 
 /** Write a file under the app root; refuse to overwrite unless force. */
 export async function writeAppFile(relativePath, content, { force = false } = {}) {
@@ -117,47 +136,124 @@ export const makeJob = simpleMaker('job', 'app/Jobs', 'job name');
 export const makeRepository = simpleMaker('repository', 'app/Repositories', 'repository name');
 export const makeStrategy = simpleMaker('strategy', 'app/Strategies', 'strategy name');
 
+const exists = async (abs) => {
+  try {
+    await fs.access(abs);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Existing `<timestamp>_<Model>.js` in a migrations/seeds dir, if any. */
+async function findStamped(dir, model) {
+  let names = [];
+  try {
+    names = await fs.readdir(appPath(dir));
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  const re = new RegExp(`^\\d+_${escapeRegExp(model)}\\.js$`);
+  const match = names.filter((n) => re.test(n)).sort();
+  return match.length ? `${dir}/${match[match.length - 1]}` : null;
+}
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Is a `router.crud('Model', 'path'` block already in routes/api.js? */
+const hasCrudRoute = (source, route) => new RegExp(
+  `router\\.crud\\(\\s*['"\`]${escapeRegExp(route.model)}['"\`]\\s*,\\s*['"\`]${escapeRegExp(route.path)}['"\`]`,
+).test(source);
+
 /**
  * make:crud users,rooms,user_categories
  * Creates model, migration, seed and controller per table, then registers
  * crud routes in routes/api.js (--init writes a fresh routes/api.js).
+ *
+ * Everything is checked before anything is written: invalid names, existing
+ * files (without --force) and a missing or unusable routes/api.js (without
+ * --init) abort with nothing changed. Re-running is safe: with --force the
+ * existing migration/seed of a model is overwritten instead of a new one being
+ * added, and a crud route block that is already in routes/api.js is not
+ * appended again.
  */
 export async function makeCrud(list, { force = false, init = false } = {}) {
-  const tables = list.split(',').map((s) => s.trim()).filter(Boolean);
+  const tables = [...new Set(list.split(',').map((s) => s.trim()).filter(Boolean))];
   if (tables.length === 0) throw new Error('make:crud needs at least one table name');
   tables.forEach(validateTable);
 
   const routes = tables.map((table) => ({ model: titleCase(table), path: table.split('_').join('-') }));
   routes.forEach((r) => validateName(r.model, 'model name'));
+  const models = routes.map((r) => r.model);
+  const duplicate = models.find((m, i) => models.indexOf(m) !== i);
+  if (duplicate) throw new Error(`make:crud: two tables map to the same model name "${duplicate}".`);
 
+  // 1. plan every file (rendering templates up front)
   const now = Date.now();
+  const files = [];
   for (const [i, table] of tables.entries()) {
     const model = titleCase(table);
     const controller = `${model}Controller`;
-    const stamp = `${now + i}_${model}`;
+    // one second apart, so tables generated together keep their order
+    const stamp = `${migrationTimestamp(new Date(now + i * 1000))}_${model}`;
+    const migration = (await findStamped('database/migrations', model)) ?? `database/migrations/${stamp}.js`;
+    const seed = (await findStamped('database/seeds', model)) ?? `database/seeds/${stamp}.js`;
 
-    await writeAppFile(`app/Models/${model}.js`, await renderTemplate('crud-model', { model, db: table }), { force });
-    await addToIndex('app/Models', model);
-    await writeAppFile(`database/migrations/${stamp}.js`, await renderTemplate('crud-migration', { migration: model }), { force });
-    await writeAppFile(`database/seeds/${stamp}.js`, await renderTemplate('crud-seed', { seed: model }), { force });
-    await writeAppFile(`app/Controllers/${controller}.js`, await renderTemplate('crud-controller', { controller, model }), { force });
-  }
-
-  if (init) {
-    await writeAppFile('routes/api.js', await renderTemplate('crud-router', { data: routes }), { force });
-    return;
+    files.push(
+      { path: `app/Models/${model}.js`, content: await renderTemplate('crud-model', { model, db: table }), index: model },
+      { path: migration, content: await renderTemplate('crud-migration', { migration: model }) },
+      { path: seed, content: await renderTemplate('crud-seed', { seed: model }) },
+      { path: `app/Controllers/${controller}.js`, content: await renderTemplate('crud-controller', { controller, model }) },
+    );
   }
 
   const apiFile = appPath('routes', 'api.js');
-  const current = await fs.readFile(apiFile, 'utf8');
-  const marker = 'export default router;';
-  if (!current.includes(marker)) {
-    throw new Error(`routes/api.js has no "${marker}" line; add the crud routes manually or use --init --force.`);
+  let routesUpdate = null;
+  if (init) {
+    files.push({ path: 'routes/api.js', content: await renderTemplate('crud-router', { data: routes }) });
+  } else {
+    let current;
+    try {
+      current = await fs.readFile(apiFile, 'utf8');
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+      throw new Error('routes/api.js not found. Run make:crud with --init to create it (nothing was written).');
+    }
+    const marker = 'export default router;';
+    if (!current.includes(marker)) {
+      throw new Error(`routes/api.js has no "${marker}" line; add the crud routes manually or use --init --force (nothing was written).`);
+    }
+    const missing = routes.filter((route) => !hasCrudRoute(current, route));
+    if (missing.length > 0) {
+      const addition = await renderTemplate('crud-router-additional', { data: missing });
+      const index = current.lastIndexOf(marker);
+      routesUpdate = current.slice(0, index) + addition + current.slice(index + marker.length);
+    }
   }
-  const addition = await renderTemplate('crud-router-additional', { data: routes });
-  const index = current.lastIndexOf(marker);
-  await fs.writeFile(apiFile, current.slice(0, index) + addition + current.slice(index + marker.length));
-  console.log(chalk.green('routes/api.js updated.'));
+
+  // 2. refuse before writing anything if a target exists (without --force)
+  if (!force) {
+    const taken = [];
+    for (const file of files) {
+      if (await exists(appPath(file.path))) taken.push(file.path);
+    }
+    if (taken.length > 0) {
+      throw new Error(`${taken.join(', ')} already exist${taken.length === 1 ? 's' : ''} (use --force to overwrite; nothing was written).`);
+    }
+  }
+
+  // 3. write
+  for (const file of files) {
+    await writeAppFile(file.path, file.content, { force });
+    if (file.index) await addToIndex('app/Models', file.index);
+  }
+
+  if (routesUpdate !== null) {
+    await fs.writeFile(apiFile, routesUpdate);
+    console.log(chalk.green('routes/api.js updated.'));
+  } else if (!init) {
+    console.log(chalk.yellow('routes/api.js already has these crud routes; not changed.'));
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -172,7 +268,7 @@ export function buildProgram() {
   program
     .name('averoa')
     .description('CLI for AveroaJS')
-    .version('2.0.0');
+    .version(VERSION);
 
   const single = (cmd, description, maker) => program.command(cmd)
     .description(description)

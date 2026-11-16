@@ -8,7 +8,13 @@ import cors from 'cors';
  *   https://app.example.com          exact origin (scheme + host [+ port])
  *   https://*.example.com            any subdomain of example.com over https
  *   *.example.com                    any subdomain of example.com, http or https
- *   *                                every origin
+ *   *                                every origin, WITHOUT credentials
+ *
+ * `*` never reflects an origin with credentials: an origin that only matches
+ * `*` gets `Access-Control-Allow-Origin: *` and no
+ * `Access-Control-Allow-Credentials`, so browsers don't send cookies. Origins
+ * that match one of the other entries (e.g. `*, https://app.example.com`) and
+ * same-origin requests are still reflected with credentials.
  *
  * `*.` is only accepted as a leading subdomain wildcard. It matches one or
  * more labels (a.example.com, a.b.example.com) but not the apex
@@ -71,16 +77,33 @@ export function compileOrigin(pattern) {
   return (origin) => regex.test(normalize(origin));
 }
 
+const splitEntries = (raw) => (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+
 /** Parse a raw CORS_WHITELIST string into matcher functions (empty → null). */
 export function parseWhitelist(raw) {
-  const entries = (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const entries = splitEntries(raw);
   if (entries.length === 0) return null;
   return entries.map(compileOrigin);
 }
 
 /**
+ * Split CORS_WHITELIST into the credentialed matchers (every entry except
+ * `*`) and whether `*` (allow every origin without credentials) is present.
+ * Returns null for an empty whitelist.
+ */
+export function parseWhitelistEntries(raw) {
+  const entries = splitEntries(raw);
+  if (entries.length === 0) return null;
+  const allowAll = entries.some((entry) => normalize(entry) === '*');
+  const matchers = entries.filter((entry) => normalize(entry) !== '*').map(compileOrigin);
+  return { matchers, allowAll };
+}
+
+/**
  * Build an origin checker. Returns `(origin) => boolean`.
  * With no whitelist every origin is allowed (see credentials rule above).
+ * It answers "allowed at all"; an origin allowed only by `*` is allowed
+ * without credentials (see createCors).
  */
 export function createOriginChecker(raw) {
   const matchers = parseWhitelist(raw);
@@ -139,20 +162,32 @@ export function createCors({
   production = !isDevelopmentEnv(),
   trustProxy = process.env.TRUST_PROXY,
 } = {}) {
-  const hasWhitelist = parseWhitelist(whitelist) !== null;
-  const isAllowed = createOriginChecker(whitelist);
+  const parsed = parseWhitelistEntries(whitelist);
   const compareScheme = trustsProxy(trustProxy);
 
-  // Not development/test and no whitelist: public, credential-less CORS.
-  if (!hasWhitelist && production) {
+  // Not development/test and no whitelist, or a whitelist that is only `*`:
+  // public, credential-less CORS.
+  if ((!parsed && production) || (parsed?.allowAll && parsed.matchers.length === 0)) {
     return cors({ origin: '*', credentials: false });
   }
 
-  return cors((req, callback) => {
+  // Empty whitelist in development/test: every origin, with credentials.
+  const isAllowed = parsed
+    ? (origin) => parsed.matchers.some((matches) => matches(origin))
+    : () => true;
+  const allowAllWithoutCredentials = parsed?.allowAll === true;
+
+  const middleware = cors((req, callback) => {
     const origin = req.get('origin');
 
     if (!origin || isSameOrigin(req, origin, { compareScheme }) || isAllowed(origin)) {
       callback(null, { origin: origin ? true : false, credentials: true });
+      return;
+    }
+
+    // `*` in the whitelist: allowed, but never reflected with credentials.
+    if (allowAllWithoutCredentials) {
+      callback(null, { origin: '*', credentials: false });
       return;
     }
 
@@ -161,6 +196,14 @@ export function createCors({
     err.expose = true;
     callback(err);
   });
+
+  if (!allowAllWithoutCredentials) return middleware;
+
+  // The answer depends on the Origin (reflected vs `*`): tell caches.
+  return function averoaCors(req, res, next) {
+    res.vary('Origin');
+    middleware(req, res, next);
+  };
 }
 
 export default createCors;

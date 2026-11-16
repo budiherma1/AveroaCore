@@ -14,7 +14,8 @@ delete process.env.CSRF_ENABLED;
 delete process.env.UPLOAD_INLINE_EXTENSIONS;
 delete process.env.TRUST_PROXY;
 
-const { createApp } = await import('../index.js');
+const { createApp, closeLogStreams } = await import('../index.js');
+const { getLogStreams } = await import('../morgan.js');
 const providers = await import(`${FIXTURE_APP}/app/Providers/index.js`);
 const strategies = await import(`${FIXTURE_APP}/app/Strategies/index.js`);
 
@@ -42,6 +43,7 @@ before(async () => {
 
 after(async () => {
   await srv?.close();
+  await closeLogStreams();
   fs.rmSync(UPLOAD_DIR, { recursive: true, force: true });
   const { DB } = await import('@averoa/utilities');
   await DB?.destroy?.();
@@ -180,6 +182,42 @@ test('error handler shows stack in development and hides it in production', asyn
   }
 });
 
+test('C-a: error details are hidden unless NODE_ENV is development or test (staging/unset fail closed)', async () => {
+  const previous = process.env.NODE_ENV;
+  try {
+    for (const env of ['staging', undefined, '', 'Production']) {
+      if (env === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = env;
+      // eslint-disable-next-line no-await-in-loop
+      let res = await fetch(`${srv.url}/api/boom`);
+      assert.equal(res.status, 500);
+      // eslint-disable-next-line no-await-in-loop
+      assert.deepEqual(await res.json(), { status: false, message: 'Internal Server Error' }, `NODE_ENV=${env}`);
+
+      // eslint-disable-next-line no-await-in-loop
+      res = await fetch(`${srv.url}/boom`, { headers: { accept: 'text/html' } });
+      // eslint-disable-next-line no-await-in-loop
+      const html = await res.text();
+      assert.doesNotMatch(html, /secret internals/, `NODE_ENV=${env}`);
+      assert.doesNotMatch(html, /<pre>/, `NODE_ENV=${env}`);
+
+      // 4xx messages are still shown, without a stack
+      // eslint-disable-next-line no-await-in-loop
+      res = await fetch(`${srv.url}/api/does-not-exist`);
+      // eslint-disable-next-line no-await-in-loop
+      assert.deepEqual(await res.json(), { status: false, message: 'Not Found' }, `NODE_ENV=${env}`);
+    }
+
+    process.env.NODE_ENV = 'development';
+    const res = await fetch(`${srv.url}/api/boom`);
+    const body = await res.json();
+    assert.equal(body.message, 'api exploded');
+    assert.ok(body.stack, 'stack in development');
+  } finally {
+    process.env.NODE_ENV = previous ?? 'test';
+  }
+});
+
 test('edge engine is registered once and renders with dot notation, globals and csrfToken', async () => {
   const engine = app.engines['.edge'];
   assert.equal(typeof engine, 'function');
@@ -194,6 +232,36 @@ test('edge engine is registered once and renders with dot notation, globals and 
 
   assert.equal(engineCalls, 0, 'app.engine() is not called per request');
   assert.equal(app.engines['.edge'], engine, 'same engine function after requests');
+});
+
+/* C-i: the CSRF token (and so the session) is only created when printed ----- */
+
+test('C-i: rendering a view that does not print csrfToken creates no session cookie', async () => {
+  const res = await fetch(`${srv.url}/view-plain`);
+  assert.equal(res.status, 200, await res.clone().text());
+  assert.match(await res.text(), /<p>Hello Plain, no form here<\/p>/);
+  assert.deepEqual(res.headers.getSetCookie(), [], 'no Set-Cookie for an anonymous GET');
+});
+
+test('C-i: a view that prints {{ csrfToken }} gets a working token and the session cookie', async () => {
+  const page = await fetch(`${srv.url}/view`);
+  const html = await page.text();
+  const token = /name="_csrf" value="([^"]+)"/.exec(html)?.[1];
+  assert.match(token ?? '', /^[A-Za-z0-9_-]{40,}$/);
+  const cookie = cookiesFrom(page);
+  assert.match(cookie, /fixture\.sid=/);
+
+  const res = await fetch(`${srv.url}/submit`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+    body: new URLSearchParams({ _csrf: token, c: '3' }).toString(),
+  });
+  assert.equal(res.status, 200);
+});
+
+test('C-i: res.locals.csrfToken is still the token string for handlers', async () => {
+  const res = await fetch(`${srv.url}/locals-token`);
+  assert.deepEqual(await res.json(), { type: 'string', same: true });
 });
 
 /* C11: cookie-authenticated /api calls need the CSRF token ------------------ */
@@ -302,5 +370,47 @@ test('C1: AppProvider.uploads() can change the inline allowlist or disable /uplo
   } finally {
     if (original) providers.AppProvider.uploads = original;
     else delete providers.AppProvider.uploads;
+  }
+});
+
+/* C-g: log streams are opened once per process, not per createApp() -------- */
+
+test('C-g: repeated createApp() reuses the access/error log streams; closeLogStreams() closes them', async () => {
+  const before = getLogStreams();
+  assert.equal(before.size, 2, 'access.log + error.log');
+  const [access, error] = [...before.values()];
+
+  for (let i = 0; i < 5; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await createApp();
+  }
+  const afterBuilds = getLogStreams();
+  assert.equal(afterBuilds.size, 2, 'no new streams per createApp()');
+  assert.deepEqual([...afterBuilds.values()], [access, error], 'same stream objects');
+
+  await closeLogStreams();
+  assert.equal(getLogStreams().size, 0);
+  assert.ok(access.closed && error.closed, 'streams closed');
+
+  // an app built before closeLogStreams() reopens the files instead of
+  // writing to a closed stream (which would emit an unhandled 'error')
+  let res = await fetch(`${srv.url}/api/ping`);
+  assert.equal(res.status, 200);
+  await new Promise((resolve) => { setImmediate(resolve); });
+  const reopened = [...getLogStreams().values()];
+  assert.ok(reopened.length >= 1);
+  assert.ok(!reopened.includes(access) && !reopened.includes(error));
+
+  // the next app shares the reopened streams
+  const built = await createApp();
+  const fresh = [...getLogStreams().values()];
+  assert.equal(fresh.length, 2);
+  assert.ok(reopened.every((st) => fresh.includes(st)));
+  const s = await listen(built.app);
+  try {
+    res = await fetch(`${s.url}/api/does-not-exist`);
+    assert.equal(res.status, 404);
+  } finally {
+    await s.close();
   }
 });

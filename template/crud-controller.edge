@@ -1,32 +1,32 @@
 import { Crud } from '@averoa/utilities';
 
-// Validation (422) and missing-id (404) responses are produced by the model
-// hooks that `router.crud()` runs before these methods. Thrown/rejected
-// errors are forwarded to the error handler by Express 5.
+// Crud resolves to { status: false, message, statusCode } on failure
+// (400 bad filter, 404 not found, 422 validation, 500 other errors); answer
+// with that status code (400 if a failure has none), 200 otherwise.
+// Thrown/rejected errors are forwarded to the error handler by Express 5.
+const send = (res, result) => res
+  .status(result?.statusCode ?? (result?.status === false ? 400 : 200))
+  .json(result);
+
 class {{ controller }} {
   async create(req, res) {
-    const data = await Crud.create('{{ model }}', req);
-    res.json(data);
+    send(res, await Crud.create('{{ model }}', req));
   }
 
   async findAll(req, res) {
-    const data = await Crud.findAll('{{ model }}', req);
-    res.json(data);
+    send(res, await Crud.findAll('{{ model }}', req));
   }
 
   async findOne(req, res) {
-    const data = await Crud.findOne('{{ model }}', req);
-    res.json(data);
+    send(res, await Crud.findOne('{{ model }}', req));
   }
 
   async update(req, res) {
-    const data = await Crud.update('{{ model }}', req);
-    res.json(data);
+    send(res, await Crud.update('{{ model }}', req));
   }
 
   async delete(req, res) {
-    const data = await Crud.delete('{{ model }}', req);
-    res.json(data);
+    send(res, await Crud.delete('{{ model }}', req));
   }
 }
 

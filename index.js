@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import { Model } from 'objection';
 import { appPath, importApp } from '@averoa/utilities/paths';
 import { createCors, isDevelopmentEnv } from './cors.js';
-import morgan from './morgan.js';
+import morgan, { closeLogStreams } from './morgan.js';
 import { registerViewEngine } from './edge-js.js';
 import { csrfProtection } from './csrf.js';
 import { uploadStatic } from './uploads.js';
@@ -60,20 +60,22 @@ export function defaultHelmetOptions({ production = isProduction() } = {}) {
 
 /**
  * express-session options.
- * SESSION_SECRET is required in production (comma separated list allowed for
- * rotation: the first one signs, all of them verify). In development a random
- * secret is generated per boot (sessions don't survive restarts) with a warning.
- * The cookie is `secure` unless NODE_ENV is development or test (staging or an
- * unset NODE_ENV fail closed); set TRUST_PROXY behind a TLS proxy.
+ * SESSION_SECRET is required unless NODE_ENV is development or test (a comma
+ * separated list is allowed for rotation: the first one signs, all of them
+ * verify). Production, staging and an unset NODE_ENV fail closed. In
+ * development/test a random secret is generated per boot (sessions don't
+ * survive restarts) with a warning. The cookie is `secure` unless NODE_ENV is
+ * development or test; set TRUST_PROXY behind a TLS proxy.
  */
 export function sessionOptions({ extra, log = console } = {}) {
-  const production = isProduction();
+  const development = isDevelopmentEnv();
   let secret = process.env.SESSION_SECRET?.split(',').map((s) => s.trim()).filter(Boolean);
 
   if (!secret || secret.length === 0) {
-    if (production) {
+    if (!development) {
+      const env = process.env.NODE_ENV ? `NODE_ENV=${process.env.NODE_ENV}` : 'NODE_ENV is unset';
       throw new Error(
-        '@averoa/core: SESSION_SECRET is required when NODE_ENV=production. '
+        `@averoa/core: SESSION_SECRET is required unless NODE_ENV is development or test (${env}). `
         + 'Generate one with `openssl rand -hex 64` and set it in the environment.',
       );
     }
@@ -88,7 +90,7 @@ export function sessionOptions({ extra, log = console } = {}) {
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: !isDevelopmentEnv(),
+      secure: !development,
     },
   };
 
@@ -98,8 +100,8 @@ export function sessionOptions({ extra, log = console } = {}) {
     cookie: { ...base.cookie, ...(extra?.cookie ?? {}) },
   };
 
-  if (production && !options.store) {
-    log.warn?.('@averoa/core: express-session is using the in-memory MemoryStore in production; '
+  if (!development && !options.store) {
+    log.warn?.('@averoa/core: express-session is using the in-memory MemoryStore outside development/test; '
       + 'it leaks memory and does not scale past one process. Return a `store` from AppProvider.session().');
   }
 
@@ -132,7 +134,9 @@ function errorHandler(Log) {
   return function averoaErrorHandler(err, req, res, next) {
     if (res.headersSent) return next(err);
 
-    const production = isProduction();
+    // Details (stack, 5xx messages) only for NODE_ENV development/test;
+    // production, staging and an unset NODE_ENV fail closed.
+    const showDetails = isDevelopmentEnv();
     let status = Number(err?.status ?? err?.statusCode);
     if (!Number.isInteger(status) || status < 400 || status > 599) status = 500;
 
@@ -141,11 +145,11 @@ function errorHandler(Log) {
     }
 
     const expose = status < 500 || err?.expose === true;
-    const message = (expose || !production) ? (err?.message || 'Error') : 'Internal Server Error';
+    const message = (expose || showDetails) ? (err?.message || 'Error') : 'Internal Server Error';
 
     const body = { status: false, message };
     if (err?.code && expose) body.code = err.code;
-    if (!production && err?.stack) body.stack = err.stack;
+    if (showDetails && err?.stack) body.stack = err.stack;
 
     res.status(status);
     if (wantsJson(req)) return res.json(body);
@@ -228,7 +232,8 @@ async function build(options = {}) {
   // views (Edge instance from @averoa/utilities, registered once)
   registerViewEngine(app, View, {
     views: appPath('resources', 'views'),
-    globals: ViewProvider.global?.(),
+    // global() may be sync or async
+    globals: await ViewProvider.global?.(),
   });
 
   // routes
@@ -324,6 +329,7 @@ export async function start(options = {}) {
         await Promise.allSettled([
           (await resolveKnex(utilities))?.destroy?.(),
           utilities.closeQueue?.(),
+          closeLogStreams(),
         ]);
       } catch (err) {
         code = 1;
@@ -338,5 +344,6 @@ export async function start(options = {}) {
   return { app, server };
 }
 
+export { closeLogStreams } from './morgan.js';
 export { default as env } from './env.js';
 export { default as command } from './command.js';

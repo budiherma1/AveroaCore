@@ -205,3 +205,47 @@ test('C16: with TRUST_PROXY set the scheme is compared (X-Forwarded-Proto)', asy
     await srv.close();
   }
 });
+
+test('C-c: CORS_WHITELIST="*" allows every origin WITHOUT credentials (never reflected)', async () => {
+  for (const production of [true, false]) {
+    // eslint-disable-next-line no-await-in-loop
+    const srv = await corsServer({ whitelist: '*', production });
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await fetch(`${srv.url}/x`, { headers: { origin: 'https://evil.io' } });
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('access-control-allow-origin'), '*', `production=${production}`);
+      assert.equal(res.headers.get('access-control-allow-credentials'), null, `production=${production}`);
+
+      // preflight
+      // eslint-disable-next-line no-await-in-loop
+      const pre = await fetch(`${srv.url}/x`, {
+        method: 'OPTIONS',
+        headers: { origin: 'https://evil.io', 'access-control-request-method': 'PUT' },
+      });
+      assert.equal(pre.headers.get('access-control-allow-origin'), '*');
+      assert.equal(pre.headers.get('access-control-allow-credentials'), null);
+    } finally {
+      // eslint-disable-next-line no-await-in-loop
+      await srv.close();
+    }
+  }
+});
+
+test('C-c: "*" next to other entries: listed origins get credentials, the rest get * without credentials', async () => {
+  const srv = await corsServer({ whitelist: 'https://app.example.com, *', production: true });
+  try {
+    let res = await fetch(`${srv.url}/x`, { headers: { origin: 'https://app.example.com' } });
+    assert.equal(res.headers.get('access-control-allow-origin'), 'https://app.example.com');
+    assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
+    assert.match(res.headers.get('vary') ?? '', /Origin/);
+
+    res = await fetch(`${srv.url}/x`, { headers: { origin: 'https://evil.io' } });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('access-control-allow-origin'), '*');
+    assert.equal(res.headers.get('access-control-allow-credentials'), null);
+    assert.match(res.headers.get('vary') ?? '', /Origin/, 'response varies by Origin');
+  } finally {
+    await srv.close();
+  }
+});

@@ -1,6 +1,6 @@
 {
   "name": "@averoa/core",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Core of AveroaJS: builds the Express 5 app (security headers, sessions, CSRF, CORS, views, routes, error handling) and the averoa CLI",
   "main": "index.js",
   "type": "module",
@@ -43,7 +43,7 @@
   },
   "homepage": "https://github.com/budiherma1/AveroaCore#readme",
   "engines": {
-    "node": ">=18.17"
+    "node": ">=20"
   },
   "peerDependencies": {
     "@averoa/routes": "^3.0.0",

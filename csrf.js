@@ -4,10 +4,15 @@ import crypto from 'crypto';
  * Session synchronizer-token CSRF protection (replaces the deprecated csurf).
  *
  * - One random token per session, stored in `req.session.csrfToken`.
- * - Available to views as `csrfToken` (res.locals) and to handlers as
- *   `req.csrfToken()` (same name csurf used). The token is created lazily the
- *   first time it is read, so pages that never render a form don't create a
- *   session.
+ * - Available to handlers as `req.csrfToken()` (same name csurf used) and
+ *   `res.locals.csrfToken`, and to views rendered with `res.render` as
+ *   `csrfToken`. The token is created lazily, the first time it is read, so
+ *   pages that never print it don't create a session (and set no cookie).
+ *   Express spreads `res.locals` into the render options and Edge copies its
+ *   state, so a getter there would fire on every render. Instead
+ *   `res.locals.csrfToken` is a non-enumerable getter (not copied), and
+ *   `res.render` passes views a lazy value that turns into the token only
+ *   when the template prints it (`{{ csrfToken }}`).
  * - Safe methods (GET, HEAD, OPTIONS) pass. Every other method must send the
  *   token in the body field `_csrf` or the `x-csrf-token` header, compared in
  *   constant time. Failure → HTTP 403 with `code: 'EBADCSRFTOKEN'`.
@@ -24,6 +29,35 @@ import crypto from 'crypto';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 const newToken = () => crypto.randomBytes(32).toString('base64url');
+
+/**
+ * A value that becomes the CSRF token when it is converted to a string
+ * (template output, string concatenation, JSON). Copying it around (Express
+ * locals, Edge state) does not create the token.
+ */
+export class LazyCsrfToken {
+  #get;
+
+  constructor(get) {
+    this.#get = get;
+  }
+
+  toString() {
+    return this.#get();
+  }
+
+  valueOf() {
+    return this.#get();
+  }
+
+  toJSON() {
+    return this.#get();
+  }
+
+  [Symbol.toPrimitive]() {
+    return this.#get();
+  }
+}
 
 function tokensMatch(expected, actual) {
   if (typeof expected !== 'string' || typeof actual !== 'string') return false;
@@ -67,11 +101,26 @@ export function csrfProtection({ skip = [], sessionOnly = ['/api'] } = {}) {
     };
 
     req.csrfToken = getToken;
+    // Non-enumerable: Express spreads res.locals on render, which would call
+    // an enumerable getter (and create a session) for every rendered page.
     Object.defineProperty(res.locals, 'csrfToken', {
       get: getToken,
-      enumerable: true,
+      enumerable: false,
       configurable: true,
     });
+
+    // Views get a lazy value instead (an explicit `csrfToken` option wins).
+    const lazy = new LazyCsrfToken(getToken);
+    const { render } = res;
+    res.render = function renderWithCsrf(view, options, callback) {
+      if (typeof options === 'function') {
+        callback = options; // eslint-disable-line no-param-reassign
+        options = undefined; // eslint-disable-line no-param-reassign
+      }
+      const opts = options && typeof options === 'object' ? options : {};
+      const withToken = Object.hasOwn(opts, 'csrfToken') ? opts : { csrfToken: lazy, ...opts };
+      return render.call(this, view, withToken, callback);
+    };
 
     if (SAFE_METHODS.has(req.method)) return next();
     if (lenient && !isSessionAuthenticated(req)) return next();
