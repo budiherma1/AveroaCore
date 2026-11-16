@@ -3,35 +3,63 @@
   "version": "2.0.1",
   "description": "Core of AveroaJS: builds the Express 5 app (security headers, sessions, CSRF, CORS, views, routes, error handling) and the averoa CLI",
   "main": "index.js",
+  "types": "./index.d.ts",
   "type": "module",
   "exports": {
-    ".": "./index.js",
-    "./knexfile": "./knexfile.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./knexfile": {
+      "types": "./knexfile.d.ts",
+      "default": "./knexfile.js"
+    },
     "./package.json": "./package.json",
+    "./*.js": {
+      "types": "./*.d.ts",
+      "default": "./*.js"
+    },
     "./*": "./*"
   },
   "files": [
     "index.js",
+    "index.d.ts",
     "env.js",
+    "env.d.ts",
     "cors.js",
+    "cors.d.ts",
     "csrf.js",
+    "csrf.d.ts",
     "uploads.js",
+    "uploads.d.ts",
     "openapi.js",
+    "openapi.d.ts",
     "redis.js",
+    "redis.d.ts",
     "session-store.js",
+    "session-store.d.ts",
     "rate-limit.js",
+    "rate-limit.d.ts",
     "request-id.js",
+    "request-id.d.ts",
     "health.js",
+    "health.d.ts",
     "edge-js.js",
+    "edge-js.d.ts",
     "morgan.js",
+    "morgan.d.ts",
     "knexfile.js",
+    "knexfile.d.ts",
     "command.js",
+    "command.d.ts",
     "template/",
     "CHANGELOG.md",
     "README.md"
   ],
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "types:exports": "node scripts/export-names.mjs --write"
   },
   "repository": {
     "type": "git",
@@ -54,6 +82,8 @@
   "peerDependencies": {
     "@averoa/routes": "^3.0.0",
     "@averoa/utilities": "^2.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": ">=20",
     "connect-redis": "^9.0.0",
     "edge.js": "^5.5.1",
     "express": "^5.1.0",
@@ -64,6 +94,12 @@
     "redis": "^5.0.0 || ^6.0.0"
   },
   "peerDependenciesMeta": {
+    "@types/express": {
+      "optional": true
+    },
+    "@types/node": {
+      "optional": true
+    },
     "connect-redis": {
       "optional": true
     },
@@ -89,6 +125,8 @@
     "@averoa/routes": "^3.0.1",
     "@averoa/utilities": "^2.0.2",
     "@seriousme/openapi-schema-validator": "^2.11.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.19.43",
     "better-sqlite3": "^11.10.0",
     "connect-redis": "^9.0.0",
     "edge.js": "^5.5.1",
@@ -98,6 +136,7 @@
     "passport": "^0.7.0",
     "rate-limit-redis": "^6.0.2",
     "redis": "^6.3.1",
+    "typescript": "^7.0.2",
     "zod": "^4.6.7"
   }
 }
