@@ -65,6 +65,8 @@
     "morgan": "^1.10.0"
   },
   "devDependencies": {
+    "@averoa/routes": "^3.0.1",
+    "@averoa/utilities": "^2.0.2",
     "better-sqlite3": "^11.10.0",
     "edge.js": "^5.5.1",
     "express": "^5.1.0",

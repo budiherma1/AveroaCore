@@ -713,6 +713,10 @@ The repository's `.npmrc` sets `legacy-peer-deps=true`. To run the tests against
 `../AveroaUtilities` and `../AveroaRoute` instead of the published versions, run `node scripts/link-siblings.mjs`
 after every `npm install`.
 
+GitHub Actions (`.github/workflows/ci.yml`) runs `npm test` on Node.js 20, 22 and 24 against the published sibling
+packages (dev dependencies). `.github/workflows/release.yml` publishes to npm when a `vX.Y.Z` tag matching
+`package.json` is pushed, after the same checks; it needs an `NPM_TOKEN` repository secret.
+
 ### Your application
 
 `createApp()` builds the real app without listening, which makes it a good fit for HTTP tests. Set `AVEROA_ROOT` and
