@@ -20,6 +20,7 @@ The bootstrap package of AveroaJS: it builds a secure Express 5 application from
 - [Application layout](#application-layout)
 - [Bootstrap order](#bootstrap-order)
 - [Providers](#providers)
+- [TypeScript](#typescript)
 - [Configuration](#configuration)
 - [Security](#security)
 - [API documentation (OpenAPI)](#api-documentation-openapi)
@@ -365,6 +366,48 @@ export default new AppProvider();
 | `global()` | once during build | object whose entries are registered as Edge globals |
 
 `global()` may be synchronous or `async`; its result is awaited before the globals are registered.
+
+## TypeScript
+
+The package ships hand-written declarations (`index.d.ts` and one `.d.ts` per module, including the subpath modules
+and `@averoa/core/knexfile`); the runtime stays plain JavaScript. They reference Express and Node.js types, so a
+TypeScript app needs `@types/express` (^5) and `@types/node`, which are optional peer dependencies. Without them,
+and with `skipLibCheck` on, the Express and Node.js parts are typed as `any`. Importing `@averoa/core` also adds
+`req.id` and `req.csrfToken()` to Express's `Request`.
+
+Type a provider with the `AppProvider` and `ViewProvider` interfaces:
+
+```ts
+// app/Providers/AppProvider.ts
+import type { AppProvider, BuiltInHealthChecks, DefaultHelmetOptions } from '@averoa/core';
+
+class Provider implements AppProvider {
+  helmet(defaults: DefaultHelmetOptions) {
+    defaults.contentSecurityPolicy.directives['script-src'].push('https://cdn.jsdelivr.net');
+    return defaults;
+  }
+
+  session() {
+    return { cookie: { maxAge: 86_400_000 } };
+  }
+
+  uploads() {
+    return false as const; // don't serve /upload
+  }
+
+  health(checks: BuiltInHealthChecks) {
+    return { ...checks, search: { check: () => pingSearch(), timeout: 500, critical: false } };
+  }
+}
+
+export default new Provider();
+```
+
+A hook that returns `false` from a class method or an `async` function needs `false as const` (or a return type
+annotation): TypeScript widens a returned `false` to `boolean` there. Other useful types: `RateLimitOptions`,
+`Health`, `HealthCheck`, `OpenApiDocument`, `RouteDoc`, `StartOptions` and `StartResult`.
+`getRedisClient<RedisClientType>()` and `createSessionStore<RedisStore>()` take the client or store type as a type
+argument.
 
 ## Configuration
 
@@ -1061,8 +1104,15 @@ The knexfile is only used by the knex CLI. At runtime the app's database connect
 
 ```bash
 npm install
-npm test        # node --test test/*.test.js
+npm test            # node --test test/*.test.js
+npm run lint        # ESLint (eslint.config.js)
+npm run typecheck   # tsc: the .d.ts files and the type tests in test/types/
 ```
+
+`test/types/api.ts` uses the main API as a TypeScript app would (through the package name, so the `exports` map is
+checked too). `test/types/exports.ts` lists every module's runtime exports, and the typecheck fails when a `.d.ts`
+file declares a different set; `npm test` fails when that list is out of date, and `npm run types:exports`
+regenerates it after an export is added or removed.
 
 The suite uses the built-in `node:test` runner against a fixture app in `test/fixtures/app`, and covers the app
 bootstrap, sessions, session-store selection, rate limiting, CSRF, CORS, uploads, the view engine, the error handler,
@@ -1082,15 +1132,11 @@ One test checks the `queue` readiness check against a real RabbitMQ and is skipp
 set, e.g. `docker run -d --rm -p 25673:5672 rabbitmq:4.1-alpine` and
 `AVEROA_TEST_AMQP_URL=amqp://127.0.0.1:25673 npm test`.
 
-The repository's `.npmrc` sets `legacy-peer-deps=true`. To run the tests against local checkouts of
-`../AveroaUtilities` and `../AveroaRoute` instead of the published versions, run `node scripts/link-siblings.mjs`
-after every `npm install`.
-
 `npm install` also installs the published peer dependencies (`@averoa/utilities`, `@averoa/routes`, Express, knex,
 Objection, Edge, Passport), so the suite runs against the released siblings. To run it against local checkouts of
 `../AveroaUtilities` and `../AveroaRoute` instead, run `node scripts/link-siblings.mjs` after every `npm install`.
 
-GitHub Actions (`.github/workflows/ci.yml`) runs `npm test` on Node.js 20, 22 and 24 against the published sibling
+GitHub Actions (`.github/workflows/ci.yml`) runs `npm run lint`, `npm run typecheck` and `npm test` on Node.js 20, 22 and 24 against the published sibling
 packages (dev dependencies). `.github/workflows/release.yml` publishes to npm when a `vX.Y.Z` tag matching
 `package.json` is pushed, after the same checks; it needs an `NPM_TOKEN` repository secret.
 

@@ -4,6 +4,16 @@
 
 ### Added
 
+- **TypeScript declarations**: hand-written `.d.ts` files for every module (the runtime stays JavaScript), with
+  `types` conditions in `exports` and a top-level `types`. They cover `createApp()` / `start()` and their results,
+  the `AppProvider` / `ViewProvider` hook interfaces, rate limiting, the session store, Redis, request ids, health
+  checks, the OpenAPI builders, the access log, CORS, CSRF, uploads, views, the CLI and the knexfile; `req.id` and
+  `req.csrfToken()` are added to Express's `Request`. `@types/express` and `@types/node` are optional peer
+  dependencies.
+- `npm run typecheck` (strict `tsc` over the declarations and the type tests in `test/types/`), `npm run lint`
+  (ESLint 10 flat config matching the AveroaJS app) and `npm run types:exports`; CI runs lint and typecheck before
+  the tests. devDependencies `typescript`, `@types/express`, `@types/node`, `eslint`, `@eslint/js`, `globals`,
+  `@stylistic/eslint-plugin`, `eslint-plugin-import-x`.
 - **OpenAPI 3.1 document** at `GET /api/openapi.json`, built from the API router's `describe()` (the `@averoa/routes`
   release after 3.0.1), the Model `static column` definitions and `validate()` middleware (`@averoa/utilities`): paths with
   `{param}` syntax, standard CRUD operations for `crud()` routes with the FilterSearch query parameters and the
