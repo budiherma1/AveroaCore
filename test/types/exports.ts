@@ -26,7 +26,7 @@ type NotAtRuntime<Runtime extends PropertyKey, Module> =
   [Exclude<keyof Module, Runtime>] extends [never] ? true : Exclude<keyof Module, Runtime>;
 
 // command.js
-type m_command_runtime = 'TEMPLATE_DIR' | 'VERSION' | 'addToIndex' | 'buildProgram' | 'default' | 'makeController' | 'makeCrud' | 'makeHelper' | 'makeJob' | 'makeMiddleware' | 'makeModel' | 'makeRepository' | 'makeStrategy' | 'migrationTimestamp' | 'titleCase' | 'validateName' | 'validateTable' | 'writeAppFile';
+type m_command_runtime = 'TEMPLATE_DIR' | 'VERSION' | 'addToIndex' | 'buildProgram' | 'default' | 'makeController' | 'makeCrud' | 'makeHelper' | 'makeJob' | 'makeMiddleware' | 'makeMigration' | 'makeModel' | 'makePolicy' | 'makeRepository' | 'makeStrategy' | 'makeTest' | 'makeValidator' | 'migrationTimestamp' | 'titleCase' | 'validateName' | 'validateSlug' | 'validateTable' | 'writeAppFile';
 export const m_command_undeclared: Undeclared<m_command_runtime, typeof m_command> = true;
 export const m_command_not_at_runtime: NotAtRuntime<m_command_runtime, typeof m_command> = true;
 

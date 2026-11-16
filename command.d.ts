@@ -8,6 +8,27 @@ export interface MakeOptions {
 export interface MakeModelOptions extends MakeOptions {
   /** Table name (default: the lower-cased model name). */
   table?: string;
+  /** Also create a migration built from the model's columns. */
+  migration?: boolean;
+  /** Also create a seeder of fake rows. */
+  seed?: boolean;
+}
+
+export interface MakePolicyOptions extends MakeOptions {
+  /** Model the policy is for (default: the name without a trailing "Policy"). */
+  model?: string;
+}
+
+export interface MakeMigrationOptions extends MakeOptions {
+  /** Create this table. */
+  create?: string;
+  /** Change this existing table. */
+  table?: string;
+}
+
+export interface MakeTestOptions extends MakeOptions {
+  /** Start the app and test it over HTTP. */
+  http?: boolean;
 }
 
 export interface MakeCrudOptions extends MakeOptions {
@@ -24,6 +45,8 @@ export const VERSION: string;
 export function validateName(name: unknown, kind?: string): string;
 /** Validate a table name (letters, digits, underscore); returns it. */
 export function validateTable(name: unknown): string;
+/** Validate a file name part (letters, digits, `_`, `-`); returns it. */
+export function validateSlug(name: unknown, kind?: string): string;
 /** PascalCase a table name: `users_categories` to `UsersCategories`. */
 export function titleCase(str: string): string;
 /** 14-digit UTC `YYYYMMDDHHMMSS` timestamp, as knex `migrate:make` uses. */
@@ -40,6 +63,10 @@ export function makeHelper(name: string, options?: MakeOptions): Promise<void>;
 export function makeJob(name: string, options?: MakeOptions): Promise<void>;
 export function makeRepository(name: string, options?: MakeOptions): Promise<void>;
 export function makeStrategy(name: string, options?: MakeOptions): Promise<void>;
+export function makePolicy(name: string, options?: MakePolicyOptions): Promise<void>;
+export function makeValidator(name: string, options?: MakeOptions): Promise<void>;
+export function makeMigration(name: string, options?: MakeMigrationOptions): Promise<void>;
+export function makeTest(name: string, options?: MakeTestOptions): Promise<void>;
 /** Model, migration, seed and controller per table, plus crud routes in routes/api.js. */
 export function makeCrud(tables: string, options?: MakeCrudOptions): Promise<void>;
 

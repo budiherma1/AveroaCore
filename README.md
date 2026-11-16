@@ -220,7 +220,7 @@ The package exports `./knexfile` and every file through `./*`. Subpath imports o
 | `@averoa/core/csrf.js` | `csrfProtection({ skip?, sessionOnly? })` (default), `isSessionAuthenticated(req)`, `LazyCsrfToken` |
 | `@averoa/core/uploads.js` | `uploadStatic(dir, options?)` (default), `resolveInlineExtensions`, `DEFAULT_INLINE_EXTENSIONS`, `UPLOAD_CSP` |
 | `@averoa/core/edge-js.js` | `registerViewEngine(app, View, { views, globals })` (default), `toViewPath`, `dotNotation` |
-| `@averoa/core/command.js` | `command` (default), `buildProgram()`, `makeController`, `makeMiddleware`, `makeModel`, `makeHelper`, `makeJob`, `makeRepository`, `makeStrategy`, `makeCrud`, `validateName`, `validateTable`, `titleCase`, `migrationTimestamp`, `writeAppFile`, `addToIndex`, `TEMPLATE_DIR`, `VERSION` |
+| `@averoa/core/command.js` | `command` (default), `buildProgram()`, `makeController`, `makeMiddleware`, `makeModel`, `makePolicy`, `makeValidator`, `makeHelper`, `makeJob`, `makeRepository`, `makeStrategy`, `makeMigration`, `makeTest`, `makeCrud`, `validateName`, `validateSlug`, `validateTable`, `titleCase`, `migrationTimestamp`, `writeAppFile`, `addToIndex`, `TEMPLATE_DIR`, `VERSION` |
 | `@averoa/core/morgan.js` | default: `(app, { env?, channel?, fileFormat?, consoleFormat?, stdout? }) => { accessLogStream, errorLogStream }`; `closeLogStreams()`, `getLogStreams()`, `accessLogSettings()`, `jsonAccessFormat` |
 | `@averoa/core/request-id.js` | `requestId(options?)` (default), `restoreRequestContext()`, `requestContext`, `currentRequestId()`, `isValidRequestId()`, `trustIncomingRequestId()`, `REQUEST_ID_MAX_LENGTH` |
 | `@averoa/core/health.js` | `createHealth(options)` (default), `healthSettings()`, `probePath()`, `databaseCheck()`, `queueCheck()` |
@@ -971,10 +971,14 @@ Commands:
   make:controller [options] <name>  create a controller
   make:middleware [options] <name>  create a middleware
   make:model [options] <name>       create a model
+  make:policy [options] <name>      create an authorization policy
+  make:validator [options] <name>   create request validation rules
   make:helper [options] <name>      create a helper
   make:job [options] <name>         create a job
   make:repository [options] <name>  create a repository
   make:strategy [options] <name>    create a passport strategy
+  make:migration [options] <name>   create a migration
+  make:test [options] <name>        create a node:test file in tests/
   make:crud [options] <tables>      create model, migration, seed, controller
                                     and routes for tables
   help [command]                    display help for command
@@ -984,17 +988,25 @@ Commands:
 | --- | --- | --- |
 | `make:controller <name>` | `-f, --force` | `app/Controllers/<name>.js` |
 | `make:middleware <name>` | `-f, --force` | `app/Middleware/<name>.js` |
-| `make:model <name>` | `-f, --force`, `-t, --table <table>` | `app/Models/<name>.js`, export added to `app/Models/index.js` |
+| `make:model <name>` | `-f, --force`, `-t, --table <table>`, `-m, --migration`, `-s, --seed` | `app/Models/<name>.js`, export added to `app/Models/index.js`; with `-m` a migration built from the model's columns, with `-s` a seeder of 10 fake rows |
+| `make:policy <name>` | `-f, --force`, `--model <model>` | `app/Policies/<name>.js` (register it in `app/Providers/AuthProvider.js`; the command prints the line) |
+| `make:validator <name>` | `-f, --force` | `app/Validators/<name>.js` |
 | `make:helper <name>` | `-f, --force` | `app/Helpers/<name>.js`, export added to `app/Helpers/index.js` |
 | `make:job <name>` | `-f, --force` | `app/Jobs/<name>.js`, export added to `app/Jobs/index.js` |
 | `make:repository <name>` | `-f, --force` | `app/Repositories/<name>.js`, export added to `app/Repositories/index.js` |
 | `make:strategy <name>` | `-f, --force` | `app/Strategies/<name>.js`, export added to `app/Strategies/index.js` |
+| `make:migration <name>` | `-f, --force`, `-c, --create <table>`, `-t, --table <table>` | `database/migrations/<timestamp>_<name>.js` |
+| `make:test <name>` | `-f, --force`, `--http` | `tests/<name>.test.js` |
 | `make:crud <tables>` | `-f, --force`, `-i, --init` | per table: model, migration, seed and controller, plus routes in `routes/api.js` |
 
 Rules shared by every generator:
 
 - `<name>` must be a JavaScript identifier (letters, digits, `_`, `$`; no path separators). It is used as the class
-  and file name exactly as typed.
+  and file name exactly as typed. `make:migration` and `make:test` names are file names: letters, digits, `_` and `-`
+  (`make:test` also accepts a trailing `.test.js`).
+- Commands that write several files (`make:model -m -s`, `make:crud`) check every target first and write nothing if
+  one is in the way. With `--force`, `make:model -m -s` overwrites the model's existing migration and seeder instead
+  of adding new ones.
 - Files are written under the app root, creating directories as needed. An existing file is never overwritten unless
   `--force` is given; without it the command stops with `<path> already exists (use --force to overwrite).`
 - Index files get one `export { default as <Name> } from './<Name>.js';` line, appended only if it is not already
@@ -1008,6 +1020,10 @@ Rules shared by every generator:
 | controller | A class with an `async index(req, res)` method; the file exports an instance. |
 | middleware | A class with `handle(req, res, next)`; the file exports an instance. |
 | model | A class extending `Model` from `@averoa/utilities` with `tableName`, `timestamp = true`, `hidden = []` and a sample `column` map (`id`, `email` with migration, seed and validation rules). The table defaults to the lower-cased name (`UserCategory` → `usercategory`); use `--table user_categories` to set it. |
+| policy | A class with `before(user)` (admins pass: `user.isAdmin?.() === true`) and `view`, `create`, `update`, `delete` abilities; `update` and `delete` allow the owner (`record.user_id === user.id`). The file exports the class, ready for `Gate.policy(Model, Policy)`; `--model` defaults to the name without a trailing `Policy`. |
+| validator | An instance with two `validate()` rule sets from `@averoa/utilities`: `store` (JSON body) and `index` (query string), used as route middleware (`[PostValidator.store]`); failures answer 422. |
+| migration | `up(knex)` / `down(knex)`. `--create posts` creates and drops a `posts` table (`id`, timestamps), `--table posts` alters it, with neither the bodies are comments. |
+| test | A `node:test` file that calls `setTestEnv()` from the boilerplate's `tests/helpers.js`. `--http` builds the app with `createApp()`, migrates and seeds the test database, listens on a random port and tests `GET /api` with `client()`; it closes the server, database, queue and Redis afterwards. |
 | helper | A class with a static `sample()` method; the file exports the class. |
 | job | A class extending `Job` from `@averoa/utilities` (the `Job` export added after utilities 2.0.2) with `tries = 3`, `backoff = [10000, 60000]`, `timeout = 60000`, an empty `handle(payload, context)` and `failed(payload, error, context)`; the file exports the class, so `<Name>.dispatch(payload)` queues it and `npm run worker:jobs` runs it. |
 | repository | A class with a `sample()` method; the file exports an instance. |

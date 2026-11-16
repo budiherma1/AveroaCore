@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **New generators.** `make:policy` (a Gate policy; prints how to register it), `make:validator` (`validate()` rule
+  sets for routes), `make:migration` (`--create <table>` / `--table <table>`) and `make:test` (a `node:test` file;
+  `--http` starts the app on a random port).
+- **`make:model --migration --seed`** also creates a migration built from the model's columns and a seeder. All files
+  are checked before any is written.
+
+### Fixed
+
+- Generated files end with a newline, so they pass the boilerplate's `eslint` (`eol-last`) as generated.
+
 ## 2.1.1
 
 ### Changed

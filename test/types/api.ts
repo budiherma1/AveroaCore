@@ -36,7 +36,9 @@ import { probePath } from '@averoa/core/health.js';
 import { REQUEST_ID_MAX_LENGTH } from '@averoa/core/request-id.js';
 import createCors from '@averoa/core/cors.js';
 import { csrfProtection } from '@averoa/core/csrf.js';
-import { buildProgram } from '@averoa/core/command.js';
+import {
+  buildProgram, makeModel, makePolicy, makeMigration, makeTest, makeValidator,
+} from '@averoa/core/command.js';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 function expectType<T extends true>(): T | void {}
@@ -180,6 +182,15 @@ export const id: string | undefined = currentRequestId() ?? requestContext.getSt
 export const parsed = env.parse('A=1');
 export const cli: Promise<void> = command(['node', 'averoa', 'make:model', 'User']);
 export const program = buildProgram().name();
+export async function generators() {
+  await makeModel('Post', { table: 'posts', migration: true, seed: true });
+  await makePolicy('PostPolicy', { model: 'Post' });
+  await makeValidator('PostValidator', { force: true });
+  await makeMigration('add_title_to_posts', { table: 'posts' });
+  await makeTest('posts', { http: true });
+  // @ts-expect-error -- create is a table name, not a boolean
+  await makeMigration('x', { create: true });
+}
 
 export async function redis() {
   const client = await getRedisClient({ url: 'redis://127.0.0.1:6379' });

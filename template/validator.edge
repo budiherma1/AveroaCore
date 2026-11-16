@@ -1,0 +1,41 @@
+import { validate } from '@averoa/utilities';
+
+// Request validation for routes; use a rule set as route middleware:
+//
+//   import {{ name }} from '#app/Validators/{{ name }}.js';
+//   router.post('/things', 'ThingController@store', [{{ name }}.store]);
+//
+// Rules use the `{ run, msg }` style of Model columns; any Standard Schema
+// validator (zod, valibot, arktype) works as well: validate({ body: z.object({ ... }) }).
+// Failures answer 422 { status: false, data: { column, message, in } }.
+// The rules are also used for the route's OpenAPI document.
+
+const maxLength = (max) => ({
+  run: (v) => v.validator.isLength(String(v.value ?? ''), { max }), msg: `must be at most ${max} characters`,
+});
+
+class {{ name }} {
+  /** POST: every field the endpoint needs. */
+  store = validate({
+    body: {
+      name: { type: 'string', example: 'Example', validation: [maxLength(100)] },
+      email: {
+        type: 'string',
+        format: 'email',
+        required: false,
+        validation: [{ run: (v) => v.validator.isEmail(String(v.value ?? '')), msg: 'email format required' }],
+      },
+    },
+  });
+
+  /** GET with a query string, e.g. ?page=2 (query values are always strings). */
+  index = validate({
+    query: {
+      page: {
+        type: 'string', required: false, validation: [{ run: (v) => /^\d+$/.test(v.value), msg: 'must be a positive number' }],
+      },
+    },
+  });
+}
+
+export default new {{ name }}();

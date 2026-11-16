@@ -1,0 +1,39 @@
+@if(create)
+/** @param {import('knex').Knex} knex */
+export async function up(knex) {
+  await knex.schema.createTable('{{ create }}', (table) => {
+    table.increments('id').primary();
+    // table.string('name', 100).notNullable();
+    table.timestamps(true, true);
+  });
+}
+
+/** @param {import('knex').Knex} knex */
+export async function down(knex) {
+  await knex.schema.dropTableIfExists('{{ create }}');
+}
+@elseif(table)
+/** @param {import('knex').Knex} knex */
+export async function up(knex) {
+  await knex.schema.alterTable('{{ table }}', (table) => {
+    // table.string('nickname', 50).nullable();
+  });
+}
+
+/** @param {import('knex').Knex} knex */
+export async function down(knex) {
+  await knex.schema.alterTable('{{ table }}', (table) => {
+    // table.dropColumn('nickname');
+  });
+}
+@else
+/** @param {import('knex').Knex} knex */
+export async function up(knex) {
+  // await knex.schema.createTable('table_name', (table) => { ... });
+}
+
+/** @param {import('knex').Knex} knex */
+export async function down(knex) {
+  // await knex.schema.dropTableIfExists('table_name');
+}
+@end

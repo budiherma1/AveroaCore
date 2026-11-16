@@ -142,6 +142,10 @@ test('generated files are valid JavaScript', async () => {
   assert.ok(files.length >= 10);
   for (const file of files) {
     assert.doesNotThrow(() => execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' }), file);
+    const src = fs.readFileSync(file, 'utf8');
+    if (path.basename(file) !== 'index.js') {
+      assert.ok(src.endsWith('\n') && !src.endsWith('\n\n') && !src.startsWith('\n'), `${file}: one final newline`);
+    }
   }
 });
 
@@ -313,4 +317,126 @@ test('C-k: make:crud names migrations and seeds YYYYMMDDHHMMSS_<Model>.js (knex 
   const seeds = fs.readdirSync(path.join(tmp, 'database', 'seeds')).filter((f) => /_(Alpha|Beta|Gamma)Items\.js$/.test(f));
   assert.equal(seeds.length, 3);
   for (const f of seeds) assert.match(f, /^\d{14}_/);
+});
+
+/* make:policy, make:validator, make:migration, make:test, make:model -m -s -- */
+
+test('make:model --migration --seed adds a model-based migration and seeder, checked before writing', async () => {
+  await run('make:model', 'Invoice', '--table', 'invoices', '-m', '-s');
+  assert.match(read('app/Models/Invoice.js'), /static tableName = 'invoices'/);
+  const migration = fs.readdirSync(path.join(tmp, 'database', 'migrations')).filter((n) => /^\d{14}_Invoice\.js$/.test(n));
+  const seed = fs.readdirSync(path.join(tmp, 'database', 'seeds')).filter((n) => /^\d{14}_Invoice\.js$/.test(n));
+  assert.equal(migration.length, 1);
+  assert.equal(seed.length, 1);
+  assert.match(read(`database/migrations/${migration[0]}`), /Invoice\.migrationUp\.bind\(Invoice\)/);
+  assert.match(read(`database/seeds/${seed[0]}`), /Invoice\.seeder\.bind\(Invoice, 10\)/);
+
+  // the model exists: nothing new is written, not even a second migration
+  await assert.rejects(() => run('make:model', 'Invoice', '-m'), /app\/Models\/Invoice\.js.* already exists? .*nothing was written/);
+  assert.equal(fs.readdirSync(path.join(tmp, 'database', 'migrations')).filter((n) => n.endsWith('_Invoice.js')).length, 1);
+
+  // --force reuses the existing migration and seed files
+  await run('make:model', 'Invoice', '--table', 'invoices', '-m', '-s', '--force');
+  assert.deepEqual(fs.readdirSync(path.join(tmp, 'database', 'migrations')).filter((n) => n.endsWith('_Invoice.js')), migration);
+  assert.deepEqual(fs.readdirSync(path.join(tmp, 'database', 'seeds')).filter((n) => n.endsWith('_Invoice.js')), seed);
+});
+
+test('make:policy derives the model and prints how to register it', async () => {
+  const lines = [];
+  console.log = (...args) => lines.push(args.join(' '));
+  try {
+    await run('make:policy', 'InvoicePolicy');
+    await run('make:policy', 'Billing', '--model', 'Invoice');
+  } finally {
+    console.log = () => {};
+  }
+  const src = read('app/Policies/InvoicePolicy.js');
+  assert.match(src, /class InvoicePolicy \{/);
+  assert.match(src, /import \{ Invoice \} from '#models';/);
+  assert.match(src, /\[Invoice, InvoicePolicy\]/);
+  assert.match(src, /update\(user, record\)/);
+  assert.match(read('app/Policies/Billing.js'), /\[Invoice, Billing\]/);
+  assert.ok(lines.some((l) => l.includes('[Invoice, InvoicePolicy] in policies()')), lines.join('\n'));
+  await assert.rejects(() => run('make:policy', 'X', '--model', '../y'), /Invalid model name/);
+});
+
+test('generated policy and validator work with @averoa/utilities', async () => {
+  await run('make:policy', 'NotePolicy');
+  await run('make:validator', 'NoteValidator');
+  const nodeModules = path.join(tmp, 'node_modules');
+  fs.symlinkSync(fileURLToPath(new URL('../node_modules', import.meta.url)), nodeModules, 'dir');
+  try {
+    const { execFileSync } = await import('node:child_process');
+    const script = `
+      import { Gate } from '@averoa/utilities';
+      import NotePolicy from './app/Policies/NotePolicy.js';
+      import NoteValidator from './app/Validators/NoteValidator.js';
+      class Note {}
+      Gate.policy(Note, NotePolicy);
+      const note = Object.assign(new Note(), { user_id: 7 });
+      const owner = { id: 7 };
+      const other = { id: 8 };
+      const call = (mw, req) => new Promise((resolve) => {
+        const res = {
+          status(c) { this.code = c; return this; },
+          json(b) { resolve({ status: this.code, body: b }); },
+        };
+        mw(req, res, () => resolve({ next: true }));
+      });
+      console.log(JSON.stringify({
+        ownerUpdate: await Gate.allows(owner, 'update', note),
+        otherUpdate: await Gate.allows(other, 'update', note),
+        create: await Gate.allows(other, 'create', Note),
+        valid: await call(NoteValidator.store, { body: { name: 'A' }, query: {}, params: {} }),
+        invalid: (await call(NoteValidator.store, { body: { name: 'A', email: 'nope' }, query: {}, params: {} })).status,
+        badPage: (await call(NoteValidator.index, { body: {}, query: { page: 'x' }, params: {} })).status,
+      }));
+      process.exit(0);`;
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: tmp, env: { ...process.env, AVEROA_ROOT: tmp, LOG_LEVEL: 'error' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    assert.deepEqual(JSON.parse(out.trim().split('\n').at(-1)), {
+      ownerUpdate: true,
+      otherUpdate: false,
+      create: true,
+      valid: { next: true },
+      invalid: 422,
+      badPage: 422,
+    });
+  } finally {
+    fs.rmSync(nodeModules);
+  }
+});
+
+test('make:migration writes create, alter and blank migrations', async () => {
+  await run('make:migration', 'create_notes_table', '--create', 'notes');
+  await run('make:migration', 'add_title_to_notes', '-t', 'notes');
+  await run('make:migration', 'misc');
+  const dir = path.join(tmp, 'database', 'migrations');
+  const find = (suffix) => read(`database/migrations/${fs.readdirSync(dir).find((n) => new RegExp(`^\\d{14}_${suffix}\\.js$`).test(n))}`);
+  assert.match(find('create_notes_table'), /createTable\('notes'/);
+  assert.match(find('create_notes_table'), /dropTableIfExists\('notes'\)/);
+  assert.match(find('add_title_to_notes'), /alterTable\('notes'/);
+  assert.match(find('misc'), /export async function up\(knex\)/);
+  assert.doesNotMatch(find('misc'), /^\s*await knex/m);
+  await assert.rejects(() => run('make:migration', '../x'), /Invalid migration name/);
+  await assert.rejects(() => run('make:migration', 'x', '--create', 'a', '--table', 'b'), /not both/);
+  await assert.rejects(() => run('make:migration', 'x', '--create', 'a;drop'), /Invalid table name/);
+});
+
+test('make:test writes unit and HTTP tests, accepting a .test.js suffix', async () => {
+  await run('make:test', 'notes');
+  await run('make:test', 'notes-api.test.js', '--http');
+  assert.match(read('tests/notes.test.js'), /setTestEnv\(\);/);
+  assert.doesNotMatch(read('tests/notes.test.js'), /createApp/);
+  const httpTest = read('tests/notes-api.test.js');
+  assert.match(httpTest, /createApp\(\)/);
+  assert.match(httpTest, /describe\('notes-api'/);
+  assert.match(httpTest, /npm test -- tests\/notes-api\.test\.js/);
+  await assert.rejects(() => run('make:test', '../evil'), /Invalid test name/);
+  const policies = fs.readdirSync(path.join(tmp, 'app', 'Policies')).map((n) => `app/Policies/${n}`);
+  for (const file of ['tests/notes.test.js', 'tests/notes-api.test.js', ...policies, 'app/Validators/NoteValidator.js']) {
+    const { execFileSync } = await import('node:child_process');
+    assert.doesNotThrow(() => execFileSync(process.execPath, ['--check', path.join(tmp, file)], { stdio: 'pipe' }), file);
+  }
 });
