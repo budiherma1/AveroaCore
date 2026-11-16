@@ -80,6 +80,10 @@
   published, so `npm install` now installs the peer dependencies normally and the tests run against the released
   siblings. `node scripts/link-siblings.mjs` still swaps in local checkouts. Development only; the published package
   is unchanged.
+- **`make:job` generates a background job**: a class extending `Job` from `@averoa/utilities` (with `tries`,
+  `backoff`, `timeout`, `handle(payload, context)` and `failed(payload, error, context)`), exported as the class
+  instead of an instance with a `sample()` method. It needs the `Job` export of `@averoa/utilities` (added after
+  2.0.2).
 
 ## 2.0.1
 

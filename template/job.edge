@@ -1,7 +1,27 @@
-class {{ name }} {
-  sample() {
-    return '{{ name }}';
+import { Job } from '@averoa/utilities';
+
+/**
+ * Dispatch:   await {{ name }}.dispatch(payload, { delay, queue });
+ * Run now:    await {{ name }}.dispatchSync(payload);
+ * Worker:     npm run worker:jobs
+ */
+class {{ name }} extends Job {
+  // static queue = 'jobs';  // default: config/queue.js `jobsQueue`, JOBS_QUEUE or 'jobs'
+  static tries = 3; // total attempts
+  static backoff = [10000, 60000]; // ms before retry 1, 2, ... (or a number, or (retry) => ms)
+  static timeout = 60000; // ms per attempt; context.signal is aborted when it expires
+
+  /**
+   * @param {any} payload JSON data given to dispatch()
+   * @param @{{ id: string, name: string, queue: string, attempt: number, tries: number, signal: AbortSignal }} context
+   */
+  async handle(payload, context) {
+    // do the work; throw to retry
+  }
+
+  /** Called once, after the last attempt failed. */
+  async failed(payload, error, context) {
   }
 }
 
-export default new {{ name }}();
+export default {{ name }};
