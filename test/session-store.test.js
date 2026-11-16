@@ -171,11 +171,11 @@ test('timeoutClient bounds every Redis reply (a stalled server fails, never hang
 });
 
 test('an invalid REDIS_URL error does not carry the URL (password) in its cause', async () => {
-  const { getRedisClient, closeRedis } = await import('../redis.js');
+  const { getRedisClient } = await import('../redis.js');
   const util = await import('node:util');
   const err = await getRedisClient({ url: 'redis://user:pa ss word@exa mple:6379', feature: 'test', log: { warn() {}, error() {} } })
     .then(() => null, (e) => e);
   await closeRedis();
-  assert.ok(err, "an invalid URL is a startup error");
+  assert.ok(err, 'an invalid URL is a startup error');
   assert.doesNotMatch(util.inspect(err, { depth: 5 }), /pa ss word/);
 });

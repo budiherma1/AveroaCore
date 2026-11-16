@@ -1,6 +1,6 @@
 {
   "name": "@averoa/core",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Core of AveroaJS: builds the Express 5 app (security headers, sessions, CSRF, CORS, views, routes, error handling) and the averoa CLI",
   "main": "index.js",
   "types": "./index.d.ts",
@@ -81,8 +81,8 @@
     "node": ">=20"
   },
   "peerDependencies": {
-    "@averoa/routes": "^3.0.0",
-    "@averoa/utilities": "^2.0.0",
+    "@averoa/routes": "^3.1.0",
+    "@averoa/utilities": "^2.1.0",
     "@types/express": "^5.0.0",
     "@types/node": ">=20",
     "connect-redis": "^9.0.0",
@@ -123,8 +123,8 @@
     "morgan": "^1.10.0"
   },
   "devDependencies": {
-    "@averoa/routes": "^3.0.1",
-    "@averoa/utilities": "^2.0.2",
+    "@averoa/routes": "^3.1.0",
+    "@averoa/utilities": "^2.1.0",
     "@eslint/js": "^10.0.1",
     "@seriousme/openapi-schema-validator": "^2.11.0",
     "@stylistic/eslint-plugin": "^5.10.0",

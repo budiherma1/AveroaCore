@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.0
 
 ### Upgrade notes (behaviour changes)
 
@@ -25,8 +25,8 @@
   (ESLint 10 flat config matching the AveroaJS app) and `npm run types:exports`; CI runs lint and typecheck before
   the tests. devDependencies `typescript`, `@types/express`, `@types/node`, `eslint`, `@eslint/js`, `globals`,
   `@stylistic/eslint-plugin`, `eslint-plugin-import-x`.
-- **OpenAPI 3.1 document** at `GET /api/openapi.json`, built from the API router's `describe()` (the `@averoa/routes`
-  release after 3.0.1), the Model `static column` definitions and `validate()` middleware (`@averoa/utilities`): paths with
+- **OpenAPI 3.1 document** at `GET /api/openapi.json`, built from the API router's `describe()` (`@averoa/routes`
+  3.1.0), the Model `static column` definitions and `validate()` middleware (`@averoa/utilities`): paths with
   `{param}` syntax, standard CRUD operations for `crud()` routes with the FilterSearch query parameters and the
   `{ status, metadata, data }` envelope, model schemas (types from migration hints, required flags, hidden columns
   excluded, upload columns as binary in multipart bodies), a JWT bearer scheme for routes behind `AuthMiddleware`,

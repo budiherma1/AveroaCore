@@ -671,7 +671,7 @@ serves it at **`GET /api/openapi.json`**, with a [Swagger UI](https://swagger.io
 only the JSON. They are registered after the API router, so an app route with the same path wins.
 
 The document is built on the first request and cached for the life of the process. Building it needs a
-`@averoa/routes` release with `router.describe()` (after 3.0.1); with a plain Express router in `routes/api.js`, or an
+`@averoa/routes` 3.1.0 or later (`router.describe()`); with a plain Express router in `routes/api.js`, or an
 older `@averoa/routes`, the document has no paths.
 
 ### What is generated
