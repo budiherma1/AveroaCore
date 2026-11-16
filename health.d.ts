@@ -32,10 +32,10 @@ export type HealthCheck = HealthCheckFunction | HealthCheckDefinition;
 export type HealthChecksConfig = Record<string, HealthCheck | false | null | undefined>;
 
 /** The built-in checks selected by READY_CHECKS. */
-export interface BuiltInHealthChecks {
+export type BuiltInHealthChecks = {
   database?: HealthCheckFunction;
   queue?: HealthCheckFunction;
-}
+};
 
 export interface HealthCheckResult {
   status: 'up' | 'down';
