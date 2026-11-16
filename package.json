@@ -20,6 +20,8 @@
     "redis.js",
     "session-store.js",
     "rate-limit.js",
+    "request-id.js",
+    "health.js",
     "edge-js.js",
     "morgan.js",
     "knexfile.js",

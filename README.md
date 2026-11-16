@@ -26,6 +26,7 @@ The bootstrap package of AveroaJS: it builds a secure Express 5 application from
 - [Rate limiting](#rate-limiting)
 - [Errors and 404](#errors-and-404)
 - [Views](#views)
+- [Observability](#observability)
 - [Graceful shutdown](#graceful-shutdown)
 - [CLI reference](#cli-reference)
 - [Database migrations](#database-migrations)
@@ -138,6 +139,12 @@ router, which has the required `init()` method.
 | `sessionStoreKind(env?)` | function | `'memory'` or `'redis'` from `SESSION_STORE`; throws on an unknown value. |
 | `getRedisClient({ url?, feature?, log? })` | async function | The shared, connected node-redis client for `REDIS_URL` (see [Session store](#session-store)). |
 | `closeRedis()` | async function | Closes every shared Redis client. |
+| `requestId(options?)` | function | The request-id middleware core installs (see [Request IDs](#request-ids)). |
+| `restoreRequestContext()` | function | Middleware that re-enters the request context of `req`. |
+| `requestContext`, `currentRequestId()` | AsyncLocalStorage, function | The per-request context and the current request id. |
+| `isValidRequestId(value)`, `trustIncomingRequestId(env?)` | functions | Incoming id validation and trust rules. |
+| `createHealth(options)`, `healthSettings(env?)` | functions | The `/health` and `/ready` endpoints (see [Health checks](#health-checks)). |
+| `accessLogSettings(env?)`, `jsonAccessFormat` | function, morgan format | Access log settings and the JSON line format (see [Access log](#access-log)). |
 
 Importing `@averoa/core` loads `<app root>/.env` as a side effect. Variables that already exist in `process.env` take
 precedence over the file.
@@ -150,17 +157,21 @@ start(options?: {
   host?: string;               // listen hostname; default: all interfaces
   handleSignals?: boolean;     // default: true (graceful shutdown on SIGTERM/SIGINT)
   utilities?: object;          // module to use instead of importing @averoa/utilities
-}): Promise<{ app: Express; server: http.Server }>
+}): Promise<{ app: Express; server: http.Server; health: Health; close(reason?: string): Promise<number> }>
 ```
 
 After the server is listening, `start()` logs `AveroaJS listening on <APP_HOST>:<port>`, calls
 `AppProvider.server(server)` and, unless `handleSignals` is `false`, installs the
 [graceful shutdown](#graceful-shutdown) handlers. A listen error (for example `EADDRINUSE`) rejects the promise.
 
+`close()` runs the same graceful shutdown without exiting the process and resolves the exit code (`0` or `1`) the
+signal handler would use; calling it again returns the same promise. `health` is described under
+[Health checks](#health-checks).
+
 #### `createApp(options?)`
 
 ```ts
-createApp(options?: { utilities?: object }): Promise<{ app: Express }>
+createApp(options?: { utilities?: object }): Promise<{ app: Express; health: Health }>
 ```
 
 Runs the full [bootstrap](#bootstrap-order) without listening and without signal handlers. `AppProvider.server` and
@@ -209,7 +220,9 @@ The package exports `./knexfile` and every file through `./*`. Subpath imports o
 | `@averoa/core/uploads.js` | `uploadStatic(dir, options?)` (default), `resolveInlineExtensions`, `DEFAULT_INLINE_EXTENSIONS`, `UPLOAD_CSP` |
 | `@averoa/core/edge-js.js` | `registerViewEngine(app, View, { views, globals })` (default), `toViewPath`, `dotNotation` |
 | `@averoa/core/command.js` | `command` (default), `buildProgram()`, `makeController`, `makeMiddleware`, `makeModel`, `makeHelper`, `makeJob`, `makeRepository`, `makeStrategy`, `makeCrud`, `validateName`, `validateTable`, `titleCase`, `migrationTimestamp`, `writeAppFile`, `addToIndex`, `TEMPLATE_DIR`, `VERSION` |
-| `@averoa/core/morgan.js` | default: `(app, { env? }) => { accessLogStream, errorLogStream }`; `closeLogStreams()`, `getLogStreams()` |
+| `@averoa/core/morgan.js` | default: `(app, { env?, channel?, fileFormat?, consoleFormat?, stdout? }) => { accessLogStream, errorLogStream }`; `closeLogStreams()`, `getLogStreams()`, `accessLogSettings()`, `jsonAccessFormat` |
+| `@averoa/core/request-id.js` | `requestId(options?)` (default), `restoreRequestContext()`, `requestContext`, `currentRequestId()`, `isValidRequestId()`, `trustIncomingRequestId()`, `REQUEST_ID_MAX_LENGTH` |
+| `@averoa/core/health.js` | `createHealth(options)` (default), `healthSettings()`, `probePath()`, `databaseCheck()`, `queueCheck()` |
 | `@averoa/core/env.js` | default: `dotenv` (loads `<app root>/.env` on import) |
 | `@averoa/core/openapi.js` | the four OpenAPI exports above, plus `mountOpenApi(app, options)`, `isOpenApiUiEnabled`, `docsHtml`, `docsContentSecurityPolicy`, `SWAGGER_UI`, `DEFAULT_AUTH_MIDDLEWARE`, `OPENAPI_VERSION` |
 | `@averoa/core/rate-limit.js` | `rateLimit(options?)` (default), `ipKeyGenerator`, `rateLimitStoreKind`, `globalRateLimitOptions`, `prepareRateLimitStore`, `setRateLimitLogger`, `rateLimitError`, `RedisRateLimitStore`, `RATE_LIMIT_STORES`, `RATE_LIMIT_MESSAGE` |
@@ -235,7 +248,7 @@ Core reads these paths relative to the app root. Every file is optional.
 | `resources/views/` | Edge views directory. |
 | `public/` | Static files served at `/`. |
 | `storages/upload/` | User uploads served at `/upload` with sandbox headers. |
-| `storages/logs/` | `access.log` and `error.log` (created automatically). Each file is opened once per process and shared by every `createApp()`; `closeLogStreams()` closes them and the next request reopens them. |
+| `storages/logs/` | `access.log` and `error.log` (created automatically, not with `LOG_CHANNEL=stdout`). Each file is opened once per process and shared by every `createApp()`; `closeLogStreams()` closes them and the next request reopens them. |
 | `config/database.js` | Read by the knexfile only. |
 | `database/migrations/`, `database/seeds/` | Default knex directories; written to by `make:crud`. |
 
@@ -251,8 +264,10 @@ stack.
 | # | Step | Configure with |
 | --- | --- | --- |
 | 1 | `express()`, `x-powered-by` disabled, `trust proxy` set when `TRUST_PROXY` is set | `TRUST_PROXY` |
+| 1a | request id (`req.id`, `X-Request-Id`, request context) | `TRUST_REQUEST_ID`, `REQUEST_ID_HEADER` |
+| 1b | health probes `GET /health`, `GET /ready` | `HEALTH_PATH`, `READY_PATH`, `READY_*`, `AppProvider.health()` |
 | 2 | `AppProvider.beginning(app)` | provider hook |
-| 3 | morgan request logging (`storages/logs/access.log`, `error.log`, console) | `NODE_ENV` |
+| 3 | morgan request logging (`storages/logs/access.log`, `error.log`, console) | `LOG_CHANNEL`, `ACCESS_LOG_FORMAT`, `NODE_ENV` |
 | 4 | helmet security headers | `AppProvider.helmet(defaults)` |
 | 5 | CORS | `CORS_WHITELIST`, `NODE_ENV`, `TRUST_PROXY` |
 | 6 | global rate limiter, mounted at `/api` (before body parsing, so rejected requests stay cheap) | `RATE_LIMIT_*`, `AppProvider.rateLimit(defaults)` |
@@ -275,6 +290,9 @@ stack.
 Consequences worth knowing:
 
 - Middleware added in `AppProvider.beginning` runs before helmet, CORS, rate limiting, body parsing, sessions and CSRF.
+- Health probes answer before `AppProvider.beginning`, the access log, sessions and CSRF: they never create a session,
+  need no CSRF token and are not written to the access log. Middleware that must not apply to probes (a rate limiter,
+  IP filtering, authentication) needs no exemption as long as it is mounted at step 2 or later.
 - When a Redis store is selected, core connects to Redis while building (before the rate limiter and the session
   middleware are installed); outside `development` / `test` an unreachable Redis makes the build fail.
 - Routes are matched before static files, so a route can shadow a file in `public/`.
@@ -302,6 +320,7 @@ export { default as ViewProvider } from './ViewProvider.js';
 | `rateLimit(defaults)` | during build, unless `RATE_LIMIT_ENABLED=false` | `{ path, name, windowMs, limit }` from [`globalRateLimitOptions()`](#rate-limiting) | options for the global limiter (any `rateLimit()` option, plus `path`); `false` disables it; `undefined` keeps the defaults |
 | `uploads()` | during build | none | `{ inlineExtensions: string[] }`, `false` to not serve `/upload`, or `undefined` for the defaults |
 | `openapi(doc, { routes })` | on the first `GET /api/openapi.json` | generated OpenAPI document, `router.describe()` routes | the document to serve (change `doc` in place or return a new object); `undefined` keeps `doc` |
+| `health(checks)` | during build | the built-in readiness checks, e.g. `{ database }` | the checks `/ready` runs (add, remove, replace); `false` disables `/health` and `/ready`; `undefined` keeps the defaults. See [Health checks](#health-checks) |
 | `end(app)` | during build, after routes and static files, before the 404 and error handlers | Express app | ignored |
 | `server(server)` | `start()` only, after `listen` succeeded | `http.Server` | ignored |
 | `shutdown()` | `start()` only, on SIGTERM/SIGINT after the server stopped accepting connections | none | awaited |
@@ -374,7 +393,17 @@ All variables are read from the environment after `<app root>/.env` is loaded.
 | `UPLOAD_INLINE_EXTENSIONS` | `jpg,jpeg,png,gif,webp,avif,bmp,ico` | Comma-separated extensions served inline from `/upload`; every other file is sent as a download. Case-insensitive, leading dots ignored. |
 | `OPENAPI_ENABLED` | `true` in `development` / `test`, otherwise `false` | Serves the generated OpenAPI document at `GET /api/openapi.json` (and the docs page). `false`, `0`, `no` or `off` disables it; any other non-empty value enables it, also in production. |
 | `OPENAPI_UI` | `true` | With `OPENAPI_ENABLED`, also serves the Swagger UI page at `GET /api/docs`. `false` keeps only the JSON document. |
-| `SHUTDOWN_TIMEOUT` | `10000` | Milliseconds before a forced `process.exit(1)` during graceful shutdown. `0` or a non-number falls back to the default. |
+| `SHUTDOWN_TIMEOUT` | `10000` | Milliseconds before a forced `process.exit(1)` during graceful shutdown (counted after `SHUTDOWN_DELAY`). `0` or a non-number falls back to the default. |
+| `SHUTDOWN_DELAY` | `0` | Milliseconds between "readiness answers 503" and closing the server on SIGTERM/SIGINT, so load balancers stop routing to the instance first. |
+| `TRUST_REQUEST_ID` | trust only when `TRUST_PROXY` is set | `true` reuses a valid incoming `X-Request-Id`, `false` always generates a new one. See [Request IDs](#request-ids). |
+| `REQUEST_ID_HEADER` | `X-Request-Id` | Header read and written for the request id. |
+| `HEALTH_PATH` | `/health` | Liveness path; `false`, `off` or `none` disables it. |
+| `READY_PATH` | `/ready` | Readiness path; `false`, `off` or `none` disables it. |
+| `READY_TIMEOUT` | `2000` | Per-check timeout of `/ready`, in milliseconds. |
+| `READY_CHECKS` | `database` | Built-in readiness checks, comma separated: `database`, `queue`; `none` for none. |
+| `LOG_CHANNEL` | unset | `stdout`, `file` or `both`; where the access log (and `Log` of `@averoa/utilities`) writes. Unset keeps the files plus the console outside production and test. See [Access log](#access-log). |
+| `ACCESS_LOG_FORMAT` | `combined` in files; `json` or `dev` on stdout | `combined`, `json` or `dev` (stdout only). |
+| `LOG_FORMAT` | `json` unless `NODE_ENV` is `development` or `test` (`pretty`) | `json` or `pretty`; also picks the stdout access log format (`json` / `dev`) when `ACCESS_LOG_FORMAT` is unset. |
 | `AVEROA_ROOT` | auto-detected | App root directory. Set it when the process is not started from inside the project. |
 | `DB_CLIENT` | `mysql2` | knexfile only: knex client when `config/database.js` does not set one. |
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` | unset | knexfile only: connection when `config/database.js` does not set one. For SQLite clients `DB_NAME` is the database file, resolved against the app root. |
@@ -397,8 +426,9 @@ error-detail behaviour. An unset `NODE_ENV`, `staging` or any other value is tre
 | 5xx error message | shown | shown | `Internal Server Error` | `Internal Server Error` |
 | Stack trace in error responses | yes | yes | no | no |
 | CSP `upgrade-insecure-requests` | no | no | yes | no |
-| Console request log (morgan `dev`) | yes | no | no | yes |
+| Console request log (morgan `dev`), `LOG_CHANNEL` unset | yes | no | no | yes |
 | `/api/openapi.json` and `/api/docs` (without `OPENAPI_ENABLED`) | served | served | not served | not served |
+| `/ready` error details | message | message | `timeout` / `failed` | `timeout` / `failed` |
 
 For local work over plain HTTP, set `NODE_ENV=development`: otherwise startup requires `SESSION_SECRET`, error details
 are hidden and the browser drops the `secure` session cookie.
@@ -749,10 +779,12 @@ Express 5, a rejected promise from an async handler reaches it too.
   `Accept` header prefers JSON over HTML; a minimal HTML page otherwise (also when no `Accept` header is sent).
 
 ```json
-{ "status": false, "message": "Invalid or missing CSRF token", "code": "EBADCSRFTOKEN" }
+{ "status": false, "message": "Invalid or missing CSRF token", "code": "EBADCSRFTOKEN", "requestId": "4b0d6c1e-8a5f-4c39-9d0e-2f1c7a1b9e55" }
 ```
 
-`code` is included when the error has one and its message is exposed. `stack` is added only when `NODE_ENV` is
+`requestId` is the [request id](#request-ids) of the request (also in the `X-Request-Id` response header and in the
+logged 5xx line), so a user can quote it in a bug report. The HTML page shows it as `Request ID: ...` and nothing
+else is added. `code` is included when the error has one and its message is exposed. `stack` is added only when `NODE_ENV` is
 `development` or `test`. If the response headers were already sent, the error is passed on to Express's default handler.
 
 ## Views
@@ -768,19 +800,111 @@ is missing) and registers it once:
 - `csrfToken` is available in every view rendered with `res.render` while CSRF is enabled; it is only created (with
   its session) when the template prints it.
 
+## Observability
+
+### Request IDs
+
+The first middleware gives every request an id:
+
+- `req.id` in handlers, and the `X-Request-Id` response header (`REQUEST_ID_HEADER` renames it);
+- `requestId` in JSON error bodies and in JSON access log lines;
+- `requestId` on every `Log` line (`@averoa/utilities` 2.1+) written while the request is handled, across `await`,
+  promises and timers, through an `AsyncLocalStorage` context. `currentRequestId()` returns it anywhere in that code.
+
+An incoming `X-Request-Id` is reused only when it is **trusted** and **valid**; otherwise a new
+`crypto.randomUUID()` is generated (and the incoming value is ignored, not echoed):
+
+- trusted: `TRUST_REQUEST_ID=true`, or `TRUST_REQUEST_ID` unset and `TRUST_PROXY` set to anything but `false` / `0`
+  (a proxy that sets or sanitises the header is expected in front of the app). `TRUST_REQUEST_ID=false` never trusts
+  it, which also suits a proxy that passes the client's header through unchanged;
+- valid: 1 to 128 characters from `A-Z a-z 0-9 - _ . : + = / @`.
+
+The context is shared with `@averoa/utilities` through a global registered symbol, so it works even when the two
+packages are different versions or installed twice. Core re-enters the context after the body parsers and after
+the session middleware (`restoreRequestContext()`), which resume from callbacks of their own; do the same after
+third-party middleware that loses it.
+
+### Access log
+
+| `LOG_CHANNEL` | Files (`storages/logs/access.log`, `error.log` for status >= 400) | stdout |
+| --- | --- | --- |
+| unset (default, as in 2.0) | yes | morgan `dev` unless `NODE_ENV` is `production` or `test` |
+| `file` | yes | no |
+| `stdout` | no (the directory is not created) | yes |
+| `both` | yes | yes |
+
+Files use `ACCESS_LOG_FORMAT` `combined` (default) or `json`. stdout uses `ACCESS_LOG_FORMAT` (`json`, `combined` or
+`dev`); when it is unset, `json` unless `LOG_FORMAT=pretty` or `NODE_ENV` is `development` / `test` (then `dev`).
+A JSON line:
+
+```json
+{"timestamp":"2026-11-16T09:30:00.000Z","level":"info","message":"GET /api/users 200","type":"access","requestId":"4b0d6c1e-8a5f-4c39-9d0e-2f1c7a1b9e55","method":"GET","path":"/api/users","status":200,"durationMs":12.402,"ip":"203.0.113.9","userAgent":"curl/8.7.1","contentLength":512}
+```
+
+`level` is `error` for 5xx (and requests that ended before a response), `warn` for 4xx, `info` otherwise. `path` has
+no query string (it may carry tokens). `ip` is `req.ip`, so it is the client address from `X-Forwarded-For` only when
+`TRUST_PROXY` is set. Health probes are not logged.
+
+For containers, `LOG_CHANNEL=stdout` with `LOG_FORMAT=json` writes the access log and the application log as JSON
+lines on stdout and nothing to disk.
+
+### Health checks
+
+| Probe | Path | Answer |
+| --- | --- | --- |
+| Liveness | `GET /health` (`HEALTH_PATH`) | always `200 {"status":"ok"}` while the process serves requests; no dependency is checked, so a database outage does not get the container restarted |
+| Readiness | `GET /ready` (`READY_PATH`) | runs every check concurrently, each bounded by `READY_TIMEOUT` (2000 ms); `200` when every critical check is up, `503` otherwise; `503 {"status":"shutting_down"}` once a graceful shutdown started |
+
+```json
+{"status":"error","checks":{"database":{"status":"down","durationMs":2000.4,"error":"timeout"}}}
+```
+
+Both answer `GET` and `HEAD` with `Cache-Control: no-store` (other methods fall through to the app) and are mounted
+before sessions, CSRF, the access log and `AppProvider.beginning()`. `error` is the check's message when `NODE_ENV` is
+`development` or `test`, and only `timeout` or `failed` otherwise. A check that goes down (or comes back up) is
+logged once at `warn` (`info`), not on every probe. Concurrent probes share one run of the checks.
+
+Built-in checks (`READY_CHECKS`, default `database`):
+
+- `database`: `select 1` (`select 1 from dual` on Oracle) on the knex instance of `@averoa/utilities`;
+- `queue`: opens (or reuses) the shared RabbitMQ connection of `@averoa/utilities` (`RABBITMQ_SERVER` or
+  `config/queue.js`). Opt in only if the web process needs the broker.
+
+`AppProvider.health(checks)` customises the list. A check is a function `({ signal, timeout }) => any` (it fails when
+it throws, rejects, times out or returns `false`; `signal` aborts on timeout) or `{ check, timeout?, critical? }`,
+where `critical: false` reports the check without failing readiness:
+
+```js
+// app/Providers/AppProvider.js
+health(checks) {
+  return {
+    ...checks,                                    // keep `database`
+    redis: () => redisClient.ping(),              // fails readiness when Redis is down
+    search: { check: () => pingSearch(), timeout: 500, critical: false },
+  };
+}
+```
+
+Return `false` to disable both endpoints, or delete a key to drop a built-in check. The `health` object returned by
+`createApp()` / `start()` exposes `readiness()` (runs the checks), `markShuttingDown()`, `shuttingDown`,
+`isHealthCheckPath(path)`, `livenessPath` and `readinessPath`.
+
 ## Graceful shutdown
 
 `start()` (unless `handleSignals: false`) listens once for `SIGTERM` and `SIGINT`. On the first signal it:
 
-1. stops accepting connections (`server.close()`, then closes idle keep-alive connections) and waits for in-flight
+1. makes `/ready` answer `503 {"status":"shutting_down"}` and, when `SHUTDOWN_DELAY` is set, keeps serving for that
+   many milliseconds so load balancers and Kubernetes stop routing to the instance (`/health` stays `200`);
+2. stops accepting connections (`server.close()`, then closes idle keep-alive connections) and waits for in-flight
    requests to finish;
-2. awaits `AppProvider.shutdown()`;
-3. closes the database (`destroy()` on the knex instance from `@averoa/utilities`), the queue (`closeQueue()`), the
+3. awaits `AppProvider.shutdown()`;
+4. closes the database (`destroy()` on the knex instance from `@averoa/utilities`), the queue (`closeQueue()`), the
    shared Redis client (`closeRedis()`) and the request log files (`closeLogStreams()`), waiting for all of them to
    settle;
-4. exits with code `0`, or `1` if a step threw.
+5. exits with code `0`, or `1` if a step threw.
 
-If shutdown takes longer than `SHUTDOWN_TIMEOUT` milliseconds (default 10000), the process exits with code `1`.
+If steps 2 to 4 take longer than `SHUTDOWN_TIMEOUT` milliseconds (default 10000), the process exits with code `1`.
+With Kubernetes, keep `terminationGracePeriodSeconds` above `SHUTDOWN_DELAY + SHUTDOWN_TIMEOUT`.
 
 ## CLI reference
 
@@ -941,7 +1065,8 @@ npm test        # node --test test/*.test.js
 
 The suite uses the built-in `node:test` runner against a fixture app in `test/fixtures/app`, and covers the app
 bootstrap, sessions, session-store selection, rate limiting, CSRF, CORS, uploads, the view engine, the error handler,
-the CLI generators and the knexfile (including a real `knex migrate` run with `better-sqlite3`, a dev dependency).
+request ids, access logging, the health probes and graceful shutdown, the CLI generators and the knexfile
+(including a real `knex migrate` run with `better-sqlite3`, a dev dependency).
 
 `test/redis.integration.test.js` runs against a real Redis (sessions and rate-limit counters shared by two app
 instances) and is skipped unless `AVEROA_TEST_REDIS_URL` is set:
@@ -951,6 +1076,10 @@ docker run -d --rm --name averoa-redis -p 127.0.0.1:6479:6379 redis:7.4-alpine
 AVEROA_TEST_REDIS_URL=redis://127.0.0.1:6479 npm test
 docker stop averoa-redis
 ```
+
+One test checks the `queue` readiness check against a real RabbitMQ and is skipped unless `AVEROA_TEST_AMQP_URL` is
+set, e.g. `docker run -d --rm -p 25673:5672 rabbitmq:4.1-alpine` and
+`AVEROA_TEST_AMQP_URL=amqp://127.0.0.1:25673 npm test`.
 
 The repository's `.npmrc` sets `legacy-peer-deps=true`. To run the tests against local checkouts of
 `../AveroaUtilities` and `../AveroaRoute` instead of the published versions, run `node scripts/link-siblings.mjs`

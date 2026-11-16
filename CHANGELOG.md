@@ -48,6 +48,30 @@
 - **Invalid settings fail startup**: an unknown `SESSION_STORE` / `RATE_LIMIT_STORE`, or a non-positive-integer
   `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`, `SESSION_TTL` or `REDIS_CONNECT_TIMEOUT`.
 - The MemoryStore warning now points to `SESSION_STORE=redis`.
+### Added (observability)
+
+- **Request IDs.** A new first middleware sets `req.id`, the `X-Request-Id` response header and an
+  `AsyncLocalStorage` request context, so `Log` lines from `@averoa/utilities` (2.1+) include `requestId` anywhere in
+  the request. An incoming `X-Request-Id` is reused only when trusted (`TRUST_REQUEST_ID=true`, or `TRUST_PROXY` set
+  and `TRUST_REQUEST_ID` unset) and valid (1-128 characters of `A-Za-z0-9-_.:+=/@`); otherwise a UUID is generated.
+  `REQUEST_ID_HEADER` renames the header. New exports `requestId`, `restoreRequestContext`, `requestContext`,
+  `currentRequestId`, `isValidRequestId`, `trustIncomingRequestId` (also `@averoa/core/request-id.js`).
+- **Error responses carry the request id**: `requestId` in JSON error bodies, `Request ID: ...` on the HTML error
+  page (nothing else is added to production pages).
+- **Health endpoints.** `GET /health` (liveness, always 200, no dependencies) and `GET /ready` (readiness: database
+  `select 1` with `READY_TIMEOUT`, optional `queue` check via `READY_CHECKS`, 503 with per-check status). Mounted
+  before `AppProvider.beginning()`, sessions, CSRF and the access log. `HEALTH_PATH` / `READY_PATH` move or disable
+  them. New `AppProvider.health(checks)` hook to add, remove or disable checks. New exports `createHealth`,
+  `healthSettings` (also `@averoa/core/health.js`).
+- **Readiness flips to 503 on shutdown** before the server closes; `SHUTDOWN_DELAY` (default 0) keeps serving for
+  that long so load balancers can drain the instance. `SHUTDOWN_TIMEOUT` now counts from the end of that delay.
+- **Access log options.** `LOG_CHANNEL=stdout|file|both` (stdout writes no files: containers) and
+  `ACCESS_LOG_FORMAT=combined|json|dev`. JSON lines hold timestamp, level, requestId, method, path (no query string),
+  status, durationMs, ip (`req.ip`, honours `TRUST_PROXY`), userAgent and contentLength. Unset `LOG_CHANNEL` keeps
+  the 2.0 behaviour (combined `access.log` / `error.log`, `dev` console outside production and test). New exports
+  `accessLogSettings`, `jsonAccessFormat`.
+- `start()` also resolves `health` and `close()` (graceful shutdown without `process.exit`, resolves the exit code);
+  `createApp()` also resolves `health`.
 
 ## 2.0.1
 
