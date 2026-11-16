@@ -22,6 +22,7 @@ The bootstrap package of AveroaJS: it builds a secure Express 5 application from
 - [Providers](#providers)
 - [Configuration](#configuration)
 - [Security](#security)
+- [Rate limiting](#rate-limiting)
 - [Errors and 404](#errors-and-404)
 - [Views](#views)
 - [Graceful shutdown](#graceful-shutdown)
@@ -35,7 +36,8 @@ The bootstrap package of AveroaJS: it builds a secure Express 5 application from
 ## Overview
 
 `@averoa/core` turns an AveroaJS project folder into a running server. A single call to `start()` creates the Express 5
-app, installs the middleware stack (request logging, helmet, CORS, body parsing, cookies, sessions, passport, CSRF),
+app, installs the middleware stack (request logging, helmet, CORS, rate limiting, body parsing, cookies, sessions,
+passport, CSRF),
 binds Objection to the database, registers the Edge view engine, mounts your routes and static files, adds 404 and
 error handlers, starts listening and handles SIGTERM/SIGINT.
 
@@ -67,6 +69,14 @@ npm install @averoa/core @averoa/routes @averoa/utilities express edge.js knex o
 
 The framework libraries are peer dependencies so that your app and the framework share a single copy of each. Install
 a database driver as well; the knexfile defaults to `mysql2`.
+
+Redis support is optional. The packages are optional peer dependencies, loaded only when the feature is turned on; a
+missing one stops startup with a message that names the package to install:
+
+| Feature | Install |
+| --- | --- |
+| `SESSION_STORE=redis` | `npm install redis connect-redis` (`redis` ^5 or ^6, `connect-redis` ^9) |
+| `RATE_LIMIT_STORE=redis` (the default when `SESSION_STORE=redis`) | `npm install redis rate-limit-redis` (`rate-limit-redis` ^6) |
 
 ## Quick start
 
@@ -114,6 +124,15 @@ router, which has the required `init()` method.
 | `defaultHelmetOptions({ production? })` | function | Returns the default helmet options (the CSP below). |
 | `parseTrustProxy(value)` | function | Parses a `TRUST_PROXY` string for `app.set('trust proxy', ...)`. |
 | `closeLogStreams()` | async function | Closes the shared `access.log` / `error.log` streams (see [Application layout](#application-layout)). |
+| `rateLimit(options?)` | function | Creates a rate-limit middleware with AveroaJS defaults (see [Rate limiting](#rate-limiting)). |
+| `ipKeyGenerator(ip, ipv6Subnet?)` | function | Re-exported from express-rate-limit: the client IP, IPv6 grouped by subnet. Use it in custom `keyGenerator`s. |
+| `rateLimitStoreKind(env?)` | function | `'memory'` or `'redis'` from `RATE_LIMIT_STORE` / `SESSION_STORE`; throws on an unknown value. |
+| `globalRateLimitOptions(env?)` | function | The global limiter settings from `RATE_LIMIT_*`; throws on an invalid value. |
+| `RATE_LIMIT_MESSAGE` | string | The default 429 message. |
+| `createSessionStore({ log? })` | async function | The session store selected by `SESSION_STORE` (`undefined` for memory). |
+| `sessionStoreKind(env?)` | function | `'memory'` or `'redis'` from `SESSION_STORE`; throws on an unknown value. |
+| `getRedisClient({ url?, feature?, log? })` | async function | The shared, connected node-redis client for `REDIS_URL` (see [Session store](#session-store)). |
+| `closeRedis()` | async function | Closes every shared Redis client. |
 
 Importing `@averoa/core` loads `<app root>/.env` as a side effect. Variables that already exist in `process.env` take
 precedence over the file.
@@ -187,6 +206,9 @@ The package exports `./knexfile` and every file through `./*`. Subpath imports o
 | `@averoa/core/command.js` | `command` (default), `buildProgram()`, `makeController`, `makeMiddleware`, `makeModel`, `makeHelper`, `makeJob`, `makeRepository`, `makeStrategy`, `makeCrud`, `validateName`, `validateTable`, `titleCase`, `migrationTimestamp`, `writeAppFile`, `addToIndex`, `TEMPLATE_DIR`, `VERSION` |
 | `@averoa/core/morgan.js` | default: `(app, { env? }) => { accessLogStream, errorLogStream }`; `closeLogStreams()`, `getLogStreams()` |
 | `@averoa/core/env.js` | default: `dotenv` (loads `<app root>/.env` on import) |
+| `@averoa/core/rate-limit.js` | `rateLimit(options?)` (default), `ipKeyGenerator`, `rateLimitStoreKind`, `globalRateLimitOptions`, `prepareRateLimitStore`, `setRateLimitLogger`, `rateLimitError`, `RedisRateLimitStore`, `RATE_LIMIT_STORES`, `RATE_LIMIT_MESSAGE` |
+| `@averoa/core/session-store.js` | `createSessionStore({ log? })`, `sessionStoreKind`, `SESSION_STORES` |
+| `@averoa/core/redis.js` | `getRedisClient`, `closeRedis`, `loadOptional(name, feature)`, `redactRedisUrl`, `setModuleLoader` (tests only) |
 
 `createApp()` already installs all of these; the subpath modules are useful when you assemble a custom app or test a
 single piece. `csrfProtection()` defaults to `skip: []` and `sessionOnly: ['/api']`. `createCors()` accepts
@@ -227,25 +249,28 @@ stack.
 | 3 | morgan request logging (`storages/logs/access.log`, `error.log`, console) | `NODE_ENV` |
 | 4 | helmet security headers | `AppProvider.helmet(defaults)` |
 | 5 | CORS | `CORS_WHITELIST`, `NODE_ENV`, `TRUST_PROXY` |
-| 6 | `express.json()` and `express.urlencoded({ extended: true })` | `BODY_LIMIT` |
-| 7 | `cookie-parser` | |
-| 8 | `express-session` | `SESSION_SECRET`, `AppProvider.session()` |
-| 9 | `passport.initialize()` and `passport.session()` | |
-| 10 | `config()` of every export of `app/Strategies/index.js` | your strategies |
-| 11 | `Model.knex(...)` with `getDB()` (or `DB`) from `@averoa/utilities` | utilities' database config |
-| 12 | Edge view engine, `ViewProvider.global()` globals and dot-notation `res.render` | `ViewProvider` |
-| 13 | CSRF protection | `CSRF_ENABLED` |
-| 14 | `routes/api.js` at `/api` | |
-| 15 | `routes/web.js` at `/` | |
-| 16 | `express.static(public/)` at `/` | |
-| 17 | sandboxed `express.static(storages/upload/)` at `/upload` | `AppProvider.uploads()`, `UPLOAD_INLINE_EXTENSIONS` |
-| 18 | `AppProvider.end(app)` | provider hook |
-| 19 | 404 handler | |
-| 20 | error handler | |
+| 6 | global rate limiter, mounted at `/api` (before body parsing, so rejected requests stay cheap) | `RATE_LIMIT_*`, `AppProvider.rateLimit(defaults)` |
+| 7 | `express.json()` and `express.urlencoded({ extended: true })` | `BODY_LIMIT` |
+| 8 | `cookie-parser` | |
+| 9 | `express-session` with the store from `SESSION_STORE` | `SESSION_SECRET`, `SESSION_STORE`, `AppProvider.session()` |
+| 10 | `passport.initialize()` and `passport.session()` | |
+| 11 | `config()` of every export of `app/Strategies/index.js` | your strategies |
+| 12 | `Model.knex(...)` with `getDB()` (or `DB`) from `@averoa/utilities` | utilities' database config |
+| 13 | Edge view engine, `ViewProvider.global()` globals and dot-notation `res.render` | `ViewProvider` |
+| 14 | CSRF protection | `CSRF_ENABLED` |
+| 15 | `routes/api.js` at `/api` | |
+| 16 | `routes/web.js` at `/` | |
+| 17 | `express.static(public/)` at `/` | |
+| 18 | sandboxed `express.static(storages/upload/)` at `/upload` | `AppProvider.uploads()`, `UPLOAD_INLINE_EXTENSIONS` |
+| 19 | `AppProvider.end(app)` | provider hook |
+| 20 | 404 handler | |
+| 21 | error handler | |
 
 Consequences worth knowing:
 
-- Middleware added in `AppProvider.beginning` runs before helmet, CORS, body parsing, sessions and CSRF.
+- Middleware added in `AppProvider.beginning` runs before helmet, CORS, rate limiting, body parsing, sessions and CSRF.
+- When a Redis store is selected, core connects to Redis while building (before the rate limiter and the session
+  middleware are installed); outside `development` / `test` an unreachable Redis makes the build fail.
 - Routes are matched before static files, so a route can shadow a file in `public/`.
 - Routes added in `AppProvider.end` run after CSRF and after the static handlers, but before the default 404, so a
   catch-all registered there replaces the default 404 page.
@@ -267,7 +292,8 @@ export { default as ViewProvider } from './ViewProvider.js';
 | --- | --- | --- | --- |
 | `beginning(app)` | during build, before any built-in middleware | Express app | ignored |
 | `helmet(defaults)` | during build | `defaultHelmetOptions()` result | helmet options to use; `false` disables helmet; `undefined` keeps the defaults |
-| `session()` | during build | none | extra express-session options merged over the defaults (e.g. `{ store }`), or `undefined` |
+| `session()` | during build | none | extra express-session options merged over the defaults (e.g. `{ cookie: { maxAge } }`), or `undefined`. A `store` here wins over `SESSION_STORE` |
+| `rateLimit(defaults)` | during build, unless `RATE_LIMIT_ENABLED=false` | `{ path, name, windowMs, limit }` from [`globalRateLimitOptions()`](#rate-limiting) | options for the global limiter (any `rateLimit()` option, plus `path`); `false` disables it; `undefined` keeps the defaults |
 | `uploads()` | during build | none | `{ inlineExtensions: string[] }`, `false` to not serve `/upload`, or `undefined` for the defaults |
 | `end(app)` | during build, after routes and static files, before the 404 and error handlers | Express app | ignored |
 | `server(server)` | `start()` only, after `listen` succeeded | `http.Server` | ignored |
@@ -282,7 +308,12 @@ class AppProvider {
   }
 
   session() {
-    return { store: new RedisStore({ client: redisClient }), cookie: { maxAge: 86_400_000 } };
+    // the store comes from SESSION_STORE; return { store } only for a custom one
+    return { cookie: { maxAge: 86_400_000 } };
+  }
+
+  rateLimit(defaults) {
+    return { ...defaults, limit: 300, skip: (req) => req.path === '/health' };
   }
 
   uploads() {
@@ -322,7 +353,17 @@ All variables are read from the environment after `<app root>/.env` is loaded.
 | `CSRF_ENABLED` | `true` | `false`, `0`, `no` or `off` (any case) disables CSRF protection; any other non-empty value enables it. |
 | `BODY_LIMIT` | `1mb` | Size limit for JSON and urlencoded bodies (e.g. `500kb`, `5mb`). Larger bodies get 413. |
 | `CORS_WHITELIST` | empty | Comma-separated allowed origins; `*` allows every origin without credentials. See [CORS](#cors). |
-| `TRUST_PROXY` | unset | Express `trust proxy`: `true`, `false`, a hop count or an address/subnet list. Set it behind a TLS-terminating proxy. See [`parseTrustProxy`](#parsetrustproxyvalue). |
+| `TRUST_PROXY` | unset | Express `trust proxy`: `true`, `false`, a hop count or an address/subnet list. Set it behind a TLS-terminating proxy. It also decides the client IP the rate limiters see. See [`parseTrustProxy`](#parsetrustproxyvalue). |
+| `SESSION_STORE` | `memory` | `memory` (express-session's MemoryStore) or `redis` (connect-redis on `REDIS_URL`). See [Session store](#session-store). |
+| `SESSION_REDIS_PREFIX` | `sess:` | Redis key prefix for sessions. Use a distinct prefix per app when apps share a Redis. |
+| `SESSION_TTL` | `86400` | Seconds a session lives in Redis when the cookie has no `maxAge` / `expires`. |
+| `REDIS_URL` | unset | Redis connection URL (`redis://[user:pass@]host:port[/db]`, `rediss://` for TLS). Required when a Redis store is selected. |
+| `REDIS_CONNECT_TIMEOUT` | `5000` | Milliseconds to wait for Redis at startup (also the per-attempt socket connect timeout). |
+| `RATE_LIMIT_ENABLED` | `true` | `false`, `0`, `no` or `off` turns the global limiter off. Per-route limiters are not affected. |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Global limiter window in milliseconds. |
+| `RATE_LIMIT_MAX` | `100` | Requests per client (IP) and window for the global limiter. |
+| `RATE_LIMIT_STORE` | `redis` when `SESSION_STORE=redis`, else `memory` | Counter store for every limiter created with `rateLimit()`: `memory` (per process) or `redis` (shared). |
+| `RATE_LIMIT_REDIS_PREFIX` | `rl:` | Redis key prefix for rate-limit counters, followed by the limiter `name` and `:`. |
 | `UPLOAD_INLINE_EXTENSIONS` | `jpg,jpeg,png,gif,webp,avif,bmp,ico` | Comma-separated extensions served inline from `/upload`; every other file is sent as a download. Case-insensitive, leading dots ignored. |
 | `SHUTDOWN_TIMEOUT` | `10000` | Milliseconds before a forced `process.exit(1)` during graceful shutdown. `0` or a non-number falls back to the default. |
 | `AVEROA_ROOT` | auto-detected | App root directory. Set it when the process is not started from inside the project. |
@@ -343,6 +384,7 @@ error-detail behaviour. An unset `NODE_ENV`, `staging` or any other value is tre
 | Empty `CORS_WHITELIST` | every origin, with credentials | every origin, with credentials | `*`, no credentials | `*`, no credentials |
 | `SESSION_SECRET` missing | random secret + warning | random secret + warning | startup error | startup error |
 | MemoryStore warning | no | no | yes, when no `store` | yes, when no `store` |
+| Redis store selected but unreachable at startup | warning, starts, keeps reconnecting | warning, starts, keeps reconnecting | startup error | startup error |
 | 5xx error message | shown | shown | `Internal Server Error` | `Internal Server Error` |
 | Stack trace in error responses | yes | yes | no | no |
 | CSP `upgrade-insecure-requests` | no | no | yes | no |
@@ -370,11 +412,45 @@ The cookie name is express-session's default (`connect.sid`) and no `maxAge` is 
 browser session. Change either through `AppProvider.session()`; its result is spread over the defaults and its
 `cookie` object is merged with the default cookie options.
 
-A random development secret means sessions do not survive a restart. Outside development, use a real session store:
-core logs a warning when `NODE_ENV` is neither `development` nor `test` and no `store` is configured.
+A random development secret means sessions do not survive a restart. Outside development, use a real session store
+(`SESSION_STORE=redis`, below): core logs a warning when `NODE_ENV` is neither `development` nor `test` and no `store`
+is configured.
 
 A `secure` cookie is only sent over HTTPS. Behind a TLS-terminating proxy, set `TRUST_PROXY` so Express sees the
 original protocol.
+
+### Session store
+
+`SESSION_STORE` selects where sessions live:
+
+| Value | Store | Use |
+| --- | --- | --- |
+| `memory` (default) | express-session's MemoryStore | development and tests. It leaks memory, is lost on restart and is not shared between processes, so core warns outside `development` / `test`. |
+| `redis` | [connect-redis](https://github.com/tj/connect-redis) on the shared node-redis client | production, several processes or instances. Needs `npm install redis connect-redis` and `REDIS_URL`. |
+
+```dotenv
+SESSION_STORE=redis
+REDIS_URL=redis://:password@redis.internal:6379/0
+SESSION_REDIS_PREFIX=myapp:sess:
+SESSION_TTL=86400
+```
+
+- **One connection.** `getRedisClient()` keeps one node-redis client per `REDIS_URL` per process. The session store,
+  the rate-limit store and your own code (`await getRedisClient()`) share it, also across several `createApp()`
+  calls. `start()` closes it on [graceful shutdown](#graceful-shutdown); call `closeRedis()` yourself in tests.
+- **Fail closed at startup.** Core connects while building the app. If Redis cannot be reached within
+  `REDIS_CONNECT_TIMEOUT` ms, `createApp()` / `start()` reject with an error that names the redacted URL, unless
+  `NODE_ENV` is `development` or `test`: there core logs a warning, starts anyway and keeps reconnecting, and
+  requests that touch the session fail until Redis is up. There is no silent fallback to memory, which would hide
+  that sessions are not shared.
+- **After startup** the client reconnects with a capped backoff (up to 5 s). The offline queue is disabled, so while
+  Redis is down a request that needs it fails immediately with a 500 instead of hanging. Errors are logged once per
+  outage, and the reconnection is logged.
+- **Passwords never appear in logs**: the URL is printed with the password replaced by `***`.
+- **Missing packages** stop startup with `SESSION_STORE=redis needs the optional package "connect-redis", which is
+  not installed. Install it in your application: npm install connect-redis` (likewise for `redis`).
+- **`AppProvider.session()` wins.** When it returns a `store`, core uses it, does not connect to Redis for sessions and
+  logs that `SESSION_STORE` is ignored.
 
 ### CSRF
 
@@ -502,6 +578,68 @@ not serve `/upload` at all.
 Core only serves the directory. Validating and storing uploads (size, type, file names) is up to the app; the
 boilerplate does this in its `UploadProvider`.
 
+## Rate limiting
+
+Core uses [express-rate-limit](https://express-rate-limit.mintlify.app/). A global limiter is mounted on `/api`
+(after CORS, before body parsing, sessions and CSRF), and `rateLimit(options)` creates stricter limiters for single
+routes.
+
+**Defaults** (every limiter created with `rateLimit()`, including the global one):
+
+- keyed by the client IP, `req.ip`, with IPv6 addresses grouped by /56. `req.ip` follows `TRUST_PROXY`: behind a
+  reverse proxy set it (e.g. `TRUST_PROXY=1`), or every client shares the proxy's address; without a proxy leave it
+  unset, or clients can pick their own IP through `X-Forwarded-For`. express-rate-limit reports
+  `TRUST_PROXY=true` (every hop trusted) and an untrusted `X-Forwarded-For` header through the app log;
+- standard headers from the IETF draft 8 (`RateLimit`, `RateLimit-Policy`), no legacy `X-RateLimit-*` headers, and
+  `Retry-After` on a 429;
+- over the limit, a `429` error goes to the [error handler](#errors-and-404) (or the app's own one): JSON for `/api`,
+  XHR and JSON clients, a small HTML page otherwise:
+
+  ```json
+  { "status": false, "message": "Too many requests, please try again later.", "code": "ERATELIMIT" }
+  ```
+
+- counters in the store selected by `RATE_LIMIT_STORE`: `memory` (per process; every instance counts on its own) or
+  `redis` ([rate-limit-redis](https://github.com/express-rate-limit/rate-limit-redis) on the shared client, needs
+  `npm install redis rate-limit-redis`; counters are shared by every instance). It defaults to `redis` when
+  `SESSION_STORE=redis`, and fails closed at startup like the session store;
+- a store error (e.g. Redis down) fails the request with a 500. Pass `passOnStoreError: true` to let requests through
+  instead.
+
+**Global limiter.** `RATE_LIMIT_MAX` requests per `RATE_LIMIT_WINDOW_MS` (default 100 per minute) per client on
+`/api`. `RATE_LIMIT_ENABLED=false` turns it off. Invalid values (`RATE_LIMIT_MAX=abc`, `0`, an unknown
+`RATE_LIMIT_STORE`) make startup fail instead of silently changing the limit. `AppProvider.rateLimit(defaults)`
+receives `{ path: '/api', name: 'global', windowMs, limit }` and returns the options to use (any `rateLimit()` option;
+`path: '/'` covers every route, static files included) or `false` to disable it.
+
+**Per-route limiters.** `rateLimit(options)` accepts every express-rate-limit option plus `name` (the limiter's
+identity in a shared store: Redis keys are `RATE_LIMIT_REDIS_PREFIX + name + ':' + key`) and `message`. Give every
+limiter a unique `name`; unnamed limiters with the same window and limit share their counters in Redis. Create
+limiters once, at startup (route files, middleware modules), never inside a request handler.
+
+```js
+// app/Middleware/LoginRateLimitMiddleware.js — 5 failed logins per 15 minutes per IP and email
+import crypto from 'crypto';
+import { rateLimit, ipKeyGenerator } from '@averoa/core';
+
+const limiter = rateLimit({
+  name: 'login',
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  skipSuccessfulRequests: true, // only failed attempts count
+  message: 'Too many login attempts, please try again later.',
+  keyGenerator: (req) => {
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+    return `${ipKeyGenerator(req.ip)}:${crypto.createHash('sha256').update(email).digest('hex')}`;
+  },
+});
+
+export default { handle: (req, res, next) => limiter(req, res, next) };
+```
+
+A custom `keyGenerator` that uses `req.ip` must pass it through `ipKeyGenerator()`, otherwise express-rate-limit
+reports `ERR_ERL_KEY_GEN_IPV6` (one IPv6 user could rotate addresses inside their /64 to bypass the limit).
+
 ## Errors and 404
 
 Unmatched requests become a `404 Not Found` error, and every error reaches the default error handler. With
@@ -542,8 +680,9 @@ is missing) and registers it once:
 1. stops accepting connections (`server.close()`, then closes idle keep-alive connections) and waits for in-flight
    requests to finish;
 2. awaits `AppProvider.shutdown()`;
-3. closes the database (`destroy()` on the knex instance from `@averoa/utilities`), the queue (`closeQueue()`) and the
-   request log files (`closeLogStreams()`), waiting for all of them to settle;
+3. closes the database (`destroy()` on the knex instance from `@averoa/utilities`), the queue (`closeQueue()`), the
+   shared Redis client (`closeRedis()`) and the request log files (`closeLogStreams()`), waiting for all of them to
+   settle;
 4. exits with code `0`, or `1` if a step threw.
 
 If shutdown takes longer than `SHUTDOWN_TIMEOUT` milliseconds (default 10000), the process exits with code `1`.
@@ -706,8 +845,17 @@ npm test        # node --test test/*.test.js
 ```
 
 The suite uses the built-in `node:test` runner against a fixture app in `test/fixtures/app`, and covers the app
-bootstrap, sessions, CSRF, CORS, uploads, the view engine, the error handler, the CLI generators and the knexfile
-(including a real `knex migrate` run with `better-sqlite3`, a dev dependency).
+bootstrap, sessions, session-store selection, rate limiting, CSRF, CORS, uploads, the view engine, the error handler,
+the CLI generators and the knexfile (including a real `knex migrate` run with `better-sqlite3`, a dev dependency).
+
+`test/redis.integration.test.js` runs against a real Redis (sessions and rate-limit counters shared by two app
+instances) and is skipped unless `AVEROA_TEST_REDIS_URL` is set:
+
+```bash
+docker run -d --rm --name averoa-redis -p 127.0.0.1:6479:6379 redis:7.4-alpine
+AVEROA_TEST_REDIS_URL=redis://127.0.0.1:6479 npm test
+docker stop averoa-redis
+```
 
 The repository's `.npmrc` sets `legacy-peer-deps=true`. To run the tests against local checkouts of
 `../AveroaUtilities` and `../AveroaRoute` instead of the published versions, run `node scripts/link-siblings.mjs`
