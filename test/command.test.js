@@ -131,6 +131,12 @@ test('generated files are valid JavaScript', async () => {
   for (const kind of ['middleware', 'helper', 'job', 'repository']) {
     await run(`make:${kind}`, `Sample${kind[0].toUpperCase()}${kind.slice(1)}`);
   }
+  await run('make:policy', 'SamplePolicy');
+  await run('make:validator', 'SampleValidator');
+  await run('make:migration', 'create_samples', '--create', 'samples');
+  await run('make:migration', 'alter_samples', '--table', 'samples');
+  await run('make:test', 'sample-unit');
+  await run('make:test', 'sample-http', '--http');
   const files = [];
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).forEach((d) => {
     const p = path.join(dir, d.name);
@@ -138,6 +144,7 @@ test('generated files are valid JavaScript', async () => {
   });
   walk(path.join(tmp, 'app'));
   walk(path.join(tmp, 'database'));
+  walk(path.join(tmp, 'tests'));
   const { execFileSync } = await import('node:child_process');
   assert.ok(files.length >= 10);
   for (const file of files) {
@@ -145,6 +152,9 @@ test('generated files are valid JavaScript', async () => {
     const src = fs.readFileSync(file, 'utf8');
     if (path.basename(file) !== 'index.js') {
       assert.ok(src.endsWith('\n') && !src.endsWith('\n\n') && !src.startsWith('\n'), `${file}: one final newline`);
+      // the boilerplate's max-len: 100, lines with a string or template literal are ignored
+      const long = src.split('\n').findIndex((line) => line.length > 100 && !/['"`]/.test(line));
+      assert.equal(long, -1, `${file}:${long + 1} is longer than 100 characters (the boilerplate's max-len)`);
     }
   }
 });

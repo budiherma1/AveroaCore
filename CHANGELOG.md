@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.1
+
+### Fixed
+
+- `make:test --http` and `make:job` generated a line longer than 100 characters, which the boilerplate's
+  `npm run lint` rejected. The generator tests now check every generated file against that limit.
+
 ## 2.3.0
 
 ### Added

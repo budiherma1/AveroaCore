@@ -22,7 +22,8 @@ after(() => app?.close());
 
 describe('{{ title }}', () => {
   test('GET /api answers JSON', async () => {
-    // app.http(method, url, { body, form, token, headers }) resolves { status, headers, body, text }
+    // app.http(method, url, { body, form, token, headers }) resolves
+    // { status, headers, body, text }
     const res = await app.http('GET', '/api');
     assert.equal(res.status, 200, res.text);
   });

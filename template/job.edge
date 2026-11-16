@@ -13,7 +13,7 @@ class {{ name }} extends Job {
 
   /**
    * @param {any} payload JSON data given to dispatch()
-   * @param @{{ id: string, name: string, queue: string, attempt: number, tries: number, signal: AbortSignal }} context
+   * @param {import('@averoa/utilities').JobContext} context id, name, queue, attempt, tries, signal
    */
   async handle(payload, context) {
     // do the work; throw to retry
