@@ -875,7 +875,7 @@ import { once } from 'node:events';
 process.env.NODE_ENV = 'test';
 process.env.AVEROA_ROOT ??= process.cwd();
 
-const { createApp, closeLogStreams } = await import('@averoa/core');
+const { createApp, closeLogStreams, closeRedis } = await import('@averoa/core');
 const { DB } = await import('@averoa/utilities');
 
 const { app } = await createApp();
@@ -886,6 +886,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 after(async () => {
   server.close();
   await closeLogStreams();
+  await closeRedis(); // only needed with a Redis store; otherwise a no-op
   await DB?.destroy?.();
 });
 
