@@ -428,6 +428,7 @@ All variables are read from the environment after `<app root>/.env` is loaded.
 | `SESSION_TTL` | `86400` | Seconds a session lives in Redis when the cookie has no `maxAge` / `expires`. |
 | `REDIS_URL` | unset | Redis connection URL (`redis://[user:pass@]host:port[/db]`, `rediss://` for TLS). Required when a Redis store is selected. |
 | `REDIS_CONNECT_TIMEOUT` | `5000` | Milliseconds to wait for Redis at startup (also the per-attempt socket connect timeout). |
+| `REDIS_COMMAND_TIMEOUT` | `2000` | Longest wait for a Redis reply in the session and rate-limit stores. A stalled Redis (network partition, frozen server) then fails the request with a 500 instead of leaving it hanging. |
 | `RATE_LIMIT_ENABLED` | `true` | `false`, `0`, `no` or `off` turns the global limiter off. Per-route limiters are not affected. |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Global limiter window in milliseconds. |
 | `RATE_LIMIT_MAX` | `100` | Requests per client (IP) and window for the global limiter. |

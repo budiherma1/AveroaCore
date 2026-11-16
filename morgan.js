@@ -104,7 +104,24 @@ export function jsonAccessFormat(tokens, req, res) {
   return JSON.stringify(entry);
 }
 
-const morganFormat = (format) => (format === 'json' ? jsonAccessFormat : format);
+// Query strings are left out of every access log format: they carry tokens
+// (?token= in email links, signed URLs) that must not end up in log files.
+const withoutQuery = (url) => String(url ?? '').split(/[?#]/)[0];
+morgan.token('averoa-path', (req) => withoutQuery(req.originalUrl || req.url));
+morgan.token('averoa-referrer', (req) => withoutQuery(req.headers.referer || req.headers.referrer) || undefined);
+
+/** Apache `combined` without query strings (path and referrer). */
+export const COMBINED_FORMAT = ':remote-addr - :remote-user [:date[clf]] ":method :averoa-path HTTP/:http-version" '
+  + ':status :res[content-length] ":averoa-referrer" ":user-agent"';
+/** morgan's `dev` line without the query string (and without colours). */
+export const DEV_FORMAT = ':method :averoa-path :status :response-time ms - :res[content-length]';
+
+const morganFormat = (format) => {
+  if (format === 'json') return jsonAccessFormat;
+  if (format === 'combined') return COMBINED_FORMAT;
+  if (format === 'dev') return DEV_FORMAT;
+  return format;
+};
 
 /**
  * @param {import('express').Express} app
@@ -148,7 +165,7 @@ const setMorgan = (app, options = {}) => {
   if (channel === 'stdout' || channel === 'both') {
     app.use(morgan(consoleFormat, { stream: { write: (line) => stdout.write(line) } }));
   } else if (channel === null && env !== 'production' && env !== 'test') {
-    app.use(morgan('dev'));
+    app.use(morgan(DEV_FORMAT));
   }
 
   return { accessLogStream, errorLogStream };

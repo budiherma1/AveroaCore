@@ -30,6 +30,11 @@ export function getLogStreams(): Map<string, WriteStream>;
 /** Close the shared access.log / error.log streams; the next request reopens them. */
 export function closeLogStreams(): Promise<void>;
 /** Access log settings from LOG_CHANNEL, ACCESS_LOG_FORMAT, LOG_FORMAT and NODE_ENV. */
+/** Apache `combined` without query strings (path and referrer). */
+export const COMBINED_FORMAT: string;
+/** morgan's `dev` line without the query string. */
+export const DEV_FORMAT: string;
+
 export function accessLogSettings(env?: EnvVars): AccessLogSettings;
 /** morgan format function producing one JSON line per request. */
 export function jsonAccessFormat(

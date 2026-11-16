@@ -1,4 +1,4 @@
-import { getRedisClient, loadOptional } from './redis.js';
+import { getRedisClient, loadOptional, timeoutClient } from './redis.js';
 
 /**
  * Session store selection.
@@ -54,7 +54,7 @@ export async function createSessionStore({ log = console } = {}) {
   const { RedisStore } = await loadOptional('connect-redis', feature);
   const client = await getRedisClient({ feature, log });
   return new RedisStore({
-    client,
+    client: timeoutClient(client),
     prefix: process.env.SESSION_REDIS_PREFIX || 'sess:',
     ttl,
   });

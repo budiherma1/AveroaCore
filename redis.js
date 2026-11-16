@@ -63,6 +63,55 @@ export async function loadOptional(name, feature) {
 }
 
 /** The URL without its password, for logs and error messages. */
+const positiveInt = (value, fallback, name) => {
+  if (value === undefined || value === null || String(value).trim() === '') return fallback;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`@averoa/core: ${name} must be a positive integer (got "${value}")`);
+  return n;
+};
+
+/** REDIS_COMMAND_TIMEOUT (ms, default 2000): longest wait for a Redis reply in the stores. */
+export function redisCommandTimeout(env = process.env) {
+  return positiveInt(env.REDIS_COMMAND_TIMEOUT, 2000, 'REDIS_COMMAND_TIMEOUT');
+}
+
+/** Error of a Redis command that got no reply within REDIS_COMMAND_TIMEOUT. */
+export class RedisTimeoutError extends Error {
+  constructor(ms) {
+    super(`@averoa/core: Redis did not answer within ${ms}ms (REDIS_COMMAND_TIMEOUT)`);
+    this.name = 'RedisTimeoutError';
+  }
+}
+
+/** `promise`, rejected with RedisTimeoutError after `ms`. */
+export function withTimeout(promise, ms = redisCommandTimeout()) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new RedisTimeoutError(ms)), ms);
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * The client, with every promise-returning method bounded by `ms`.
+ * node-redis times out commands only while they wait to be written; once on
+ * the socket, a stalled server (network partition, frozen process) would
+ * leave every session and rate-limit lookup pending forever.
+ */
+export function timeoutClient(client, ms = redisCommandTimeout()) {
+  return new Proxy(client, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== 'function') return value;
+      return function bounded(...args) {
+        const result = value.apply(target, args);
+        return result && typeof result.then === 'function' ? withTimeout(result, ms) : result;
+      };
+    },
+  });
+}
+
 export function redactRedisUrl(url) {
   try {
     const parsed = new URL(url);
@@ -72,13 +121,6 @@ export function redactRedisUrl(url) {
     return '<invalid REDIS_URL>';
   }
 }
-
-const positiveInt = (value, fallback, name) => {
-  if (value === undefined || value === null || String(value).trim() === '') return fallback;
-  const n = Number(value);
-  if (!Number.isInteger(n) || n <= 0) throw new Error(`@averoa/core: ${name} must be a positive integer (got "${value}")`);
-  return n;
-};
 
 async function connect({ url, feature, log }) {
   const { createClient } = await loadOptional('redis', feature);
@@ -101,7 +143,9 @@ async function connect({ url, feature, log }) {
       },
     });
   } catch (err) {
-    throw new Error(`@averoa/core: invalid REDIS_URL (${safeUrl}): ${err?.message || err}`, { cause: err });
+    // no `cause`: URL errors carry the full URL, password included, in `input`
+    // eslint-disable-next-line preserve-caught-error -- see above
+    throw new Error(`@averoa/core: invalid REDIS_URL (${safeUrl}): ${err?.code || 'parse error'}`);
   }
 
   let lastError;

@@ -233,8 +233,12 @@ async function build(options = {}) {
   setRateLimitLogger(log);
   sessionStoreKind();
   rateLimitStoreKind();
-  await prepareRateLimitStore({ log });
   const rateLimitDefaults = globalRateLimitOptions();
+  // the store is needed when the global limiter is mounted, or when the app asked
+  // for Redis explicitly (its own route limiters use it)
+  if (rateLimitDefaults.enabled || process.env.RATE_LIMIT_STORE) {
+    await prepareRateLimitStore({ log });
+  }
   if (rateLimitDefaults.enabled) {
     const { enabled: _enabled, ...defaults } = rateLimitDefaults;
     const custom = AppProvider.rateLimit ? await AppProvider.rateLimit({ ...defaults }) : undefined;
@@ -368,6 +372,12 @@ export async function start(options = {}) {
 
   await AppProvider.server?.(server);
 
+  // during shutdown every response closes its connection, so keep-alive clients
+  // (load balancers, proxies) cannot keep the server open past server.close()
+  server.prependListener('request', (req, res) => {
+    if (health.shuttingDown) res.shouldKeepAlive = false;
+  });
+
   // Graceful shutdown: readiness flips to 503 first, then (after
   // SHUTDOWN_DELAY ms, so load balancers stop routing here) the server stops
   // accepting connections, AppProvider.shutdown() runs and the DB, queue and
@@ -390,6 +400,7 @@ export async function start(options = {}) {
       const timedOut = new Promise((resolve) => {
         timer = setTimeout(() => {
           log.error?.('@averoa/core: graceful shutdown timed out, forcing exit');
+          server.closeAllConnections?.();
           resolve(1);
         }, timeout);
         timer.unref();

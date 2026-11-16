@@ -50,7 +50,7 @@ class Provider implements AppProvider {
 
   beginning(app: Express) {
     app.get('/early', (req, res) => { res.send(req.id); });
-    app.post('/form', (req, res) => { res.json({ token: req.csrfToken() }); });
+    app.post('/form', (req, res) => { res.json({ token: req.csrfToken?.() }); });
   }
 
   helmet(defaults: ReturnType<typeof defaultHelmetOptions>) {

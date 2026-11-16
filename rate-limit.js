@@ -1,5 +1,5 @@
 import { rateLimit as expressRateLimit, ipKeyGenerator } from 'express-rate-limit';
-import { getRedisClient, loadOptional } from './redis.js';
+import { getRedisClient, loadOptional, withTimeout } from './redis.js';
 import { sessionStoreKind } from './session-store.js';
 
 /**
@@ -130,7 +130,7 @@ export class RedisRateLimitStore {
         prefix: this.prefix,
         sendCommand: async (...args) => {
           const client = await getRedisClient({ url: this.url, feature, log: defaultLog });
-          return client.sendCommand(args);
+          return withTimeout(client.sendCommand(args));
         },
       });
       // loading the scripts can fail while Redis is down; rate-limit-redis

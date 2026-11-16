@@ -795,7 +795,7 @@ const escapeHtml = (value) => String(value)
 export function docsContentSecurityPolicy(nonce) {
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' ${CDN_ORIGIN}`,
+    `script-src 'self' 'nonce-${nonce}' ${SWAGGER_UI.script}`,
     `style-src 'self' 'unsafe-inline' ${CDN_ORIGIN}`,
     "img-src 'self' data:",
     "font-src 'self' data:",

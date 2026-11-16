@@ -153,3 +153,29 @@ test('redactRedisUrl hides the password', () => {
   assert.equal(redactRedisUrl('redis://127.0.0.1:6379'), 'redis://127.0.0.1:6379');
   assert.equal(redactRedisUrl('not a url'), '<invalid REDIS_URL>');
 });
+
+test('timeoutClient bounds every Redis reply (a stalled server fails, never hangs)', async () => {
+  const { timeoutClient, RedisTimeoutError, redisCommandTimeout } = await import('../redis.js');
+  const stalled = {
+    get: () => new Promise(() => {}), // never answers
+    set: async () => 'OK',
+    isOpen: true,
+  };
+  const client = timeoutClient(stalled, 30);
+  assert.equal(await client.set('k', 'v'), 'OK');
+  assert.equal(client.isOpen, true, 'non-function properties pass through');
+  await assert.rejects(client.get('k'), RedisTimeoutError);
+  assert.equal(redisCommandTimeout({}), 2000);
+  assert.equal(redisCommandTimeout({ REDIS_COMMAND_TIMEOUT: '500' }), 500);
+  assert.throws(() => redisCommandTimeout({ REDIS_COMMAND_TIMEOUT: 'abc' }), /REDIS_COMMAND_TIMEOUT/);
+});
+
+test('an invalid REDIS_URL error does not carry the URL (password) in its cause', async () => {
+  const { getRedisClient, closeRedis } = await import('../redis.js');
+  const util = await import('node:util');
+  const err = await getRedisClient({ url: 'redis://user:pa ss word@exa mple:6379', feature: 'test', log: { warn() {}, error() {} } })
+    .then(() => null, (e) => e);
+  await closeRedis();
+  assert.ok(err, "an invalid URL is a startup error");
+  assert.doesNotMatch(util.inspect(err, { depth: 5 }), /pa ss word/);
+});

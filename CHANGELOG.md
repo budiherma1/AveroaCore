@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Upgrade notes (behaviour changes)
+
+- **`/api` is rate limited by default**: 100 requests per minute per client IP. Behind a proxy or load balancer set
+  `TRUST_PROXY`, or every client shares the proxy's IP and one budget. `RATE_LIMIT_ENABLED=false` turns it off,
+  `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` change it.
+- **`GET /health` and `GET /ready` answer before your routes**, so an app route with one of those paths is no longer
+  reached; move the probes with `HEALTH_PATH` / `READY_PATH` (or `off`). `/ready` checks the database by default,
+  so an app without one answers 503 there until it sets `READY_CHECKS=none`.
+- **Access logs leave out query strings** in every format (`combined` and `dev` too), so tokens in links such as
+  `?token=` are not written to log files.
+
 ### Added
 
 - **TypeScript declarations**: hand-written `.d.ts` files for every module (the runtime stays JavaScript), with
@@ -94,6 +105,21 @@
   `backoff`, `timeout`, `handle(payload, context)` and `failed(payload, error, context)`), exported as the class
   instead of an instance with a `sample()` method. It needs the `Job` export of `@averoa/utilities` (added after
   2.0.2).
+
+### Fixed (review before release)
+
+- **Graceful shutdown with keep-alive clients.** During shutdown every response carries `Connection: close`, and
+  connections still open at `SHUTDOWN_TIMEOUT` are closed. Before, a proxy reusing one keep-alive connection kept the
+  server open until the timeout, so `AppProvider.shutdown()` and the database/queue/Redis cleanup never ran.
+- **A stalled Redis no longer hangs requests.** Session and rate-limit store commands give up after
+  `REDIS_COMMAND_TIMEOUT` ms (default 2000) and the request fails with a 500; node-redis itself only times out
+  commands that were not sent yet. New exports `withTimeout`, `timeoutClient`, `RedisTimeoutError`,
+  `redisCommandTimeout` (`@averoa/core/redis.js`).
+- **An invalid `REDIS_URL` error no longer carries the URL** (password included) in its `cause`.
+- **`rate-limit-redis` is only required when a Redis-backed limiter is used**: `SESSION_STORE=redis` with
+  `RATE_LIMIT_ENABLED=false` no longer needs it.
+- **Swagger UI page CSP** allows only the pinned Swagger UI script, not all of `cdn.jsdelivr.net`.
+- **Release workflow** only publishes tags that point at a commit on `main`.
 
 ## 2.0.1
 

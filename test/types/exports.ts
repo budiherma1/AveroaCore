@@ -66,7 +66,7 @@ export const m_knexfile_undeclared: Undeclared<m_knexfile_runtime, typeof m_knex
 export const m_knexfile_not_at_runtime: NotAtRuntime<m_knexfile_runtime, typeof m_knexfile> = true;
 
 // morgan.js
-type m_morgan_runtime = 'accessLogSettings' | 'closeLogStreams' | 'default' | 'getLogStreams' | 'jsonAccessFormat';
+type m_morgan_runtime = 'COMBINED_FORMAT' | 'DEV_FORMAT' | 'accessLogSettings' | 'closeLogStreams' | 'default' | 'getLogStreams' | 'jsonAccessFormat';
 export const m_morgan_undeclared: Undeclared<m_morgan_runtime, typeof m_morgan> = true;
 export const m_morgan_not_at_runtime: NotAtRuntime<m_morgan_runtime, typeof m_morgan> = true;
 
@@ -81,7 +81,7 @@ export const m_rate_limit_undeclared: Undeclared<m_rate_limit_runtime, typeof m_
 export const m_rate_limit_not_at_runtime: NotAtRuntime<m_rate_limit_runtime, typeof m_rate_limit> = true;
 
 // redis.js
-type m_redis_runtime = 'closeRedis' | 'getRedisClient' | 'loadOptional' | 'redactRedisUrl' | 'setModuleLoader';
+type m_redis_runtime = 'RedisTimeoutError' | 'closeRedis' | 'getRedisClient' | 'loadOptional' | 'redactRedisUrl' | 'redisCommandTimeout' | 'setModuleLoader' | 'timeoutClient' | 'withTimeout';
 export const m_redis_undeclared: Undeclared<m_redis_runtime, typeof m_redis> = true;
 export const m_redis_not_at_runtime: NotAtRuntime<m_redis_runtime, typeof m_redis> = true;
 

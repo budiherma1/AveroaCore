@@ -219,6 +219,22 @@ function captureStdout() {
   return { lines, write: (line) => lines.push(line) };
 }
 
+test('access log: combined and dev lines leave out query strings (tokens in email links)', async () => {
+  await closeLogStreams();
+  for (const consoleFormat of ['combined', 'dev']) {
+    const out = captureStdout();
+    const app = express();
+    setMorgan(app, { channel: 'stdout', consoleFormat, stdout: out });
+    app.get('/verify', (req, res) => res.json({ ok: true }));
+    await withServer(app, async (url) => {
+      await (await fetch(`${url}/verify?token=s3cr3t-token`, { headers: { referer: 'https://app.test/reset?token=other-secret' } })).text();
+    });
+    const line = out.lines.join('\n');
+    assert.match(line, /GET \/verify/, consoleFormat);
+    assert.doesNotMatch(line, /s3cr3t-token|other-secret/, consoleFormat);
+  }
+});
+
 test('access log: LOG_CHANNEL=stdout writes JSON lines to stdout and opens no files', async () => {
   await closeLogStreams();
   const out = captureStdout();
@@ -484,6 +500,47 @@ test('graceful shutdown: readiness flips to 503 before the server closes', async
     console.log = log;
     if (original) providers.AppProvider.shutdown = original;
     else delete providers.AppProvider.shutdown;
+  }
+});
+
+test('graceful shutdown finishes while a keep-alive client keeps sending requests', async () => {
+  const http = await import('node:http');
+  const db = knex({ client: 'better-sqlite3', connection: { filename: ':memory:' }, useNullAsDefault: true });
+  const own = { ...utilities, getDB: async () => db, DB: db };
+  const log = console.log;
+  console.log = () => {};
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+  try {
+    await withEnv({ SHUTDOWN_DELAY: '0', SHUTDOWN_TIMEOUT: '5000' }, async () => {
+      const { server, close } = await start({
+        port: 0, host: '127.0.0.1', handleSignals: false, utilities: own,
+      });
+      console.log = log;
+      const { port } = server.address();
+      const get = () => new Promise((resolve) => {
+        http.get({ host: '127.0.0.1', port, path: '/health', agent }, (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.headers.connection));
+        }).on('error', () => resolve('error'));
+      });
+      await get();
+      // close() while a request is in flight on the keep-alive socket, then keep
+      // reusing that socket: without `Connection: close` the server never closes
+      let closing;
+      server.once('request', () => { closing = close('SIGTERM'); });
+      let busy = true;
+      const loop = (async () => { while (busy) await get(); })();
+      while (!closing) await new Promise((resolve) => { setTimeout(resolve, 5); });
+
+      const started = Date.now();
+      assert.equal(await closing, 0, 'closed cleanly, not by SHUTDOWN_TIMEOUT');
+      assert.ok(Date.now() - started < 4000);
+      busy = false;
+      await loop;
+    });
+  } finally {
+    console.log = log;
+    agent.destroy();
   }
 });
 

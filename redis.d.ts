@@ -42,6 +42,20 @@ export function loadOptional<Module = unknown>(name: string, feature: string): P
 /** The URL without its password, for logs and error messages. */
 export function redactRedisUrl(url: string): string;
 
+/** REDIS_COMMAND_TIMEOUT in milliseconds (default 2000). */
+export function redisCommandTimeout(env?: Record<string, string | undefined>): number;
+
+/** A Redis command that got no reply within REDIS_COMMAND_TIMEOUT. */
+export class RedisTimeoutError extends Error {
+  constructor(ms: number);
+}
+
+/** `promise`, rejected with RedisTimeoutError after `ms` (default REDIS_COMMAND_TIMEOUT). */
+export function withTimeout<T>(promise: PromiseLike<T>, ms?: number): Promise<T>;
+
+/** The client, with every promise-returning method bounded by `ms` (default REDIS_COMMAND_TIMEOUT). */
+export function timeoutClient<Client extends object>(client: Client, ms?: number): Client;
+
 /**
  * Replace the function used to import optional packages (tests only).
  * Returns the previous one; `null` / `undefined` restores the default.

@@ -4,7 +4,8 @@ declare global {
   namespace Express {
     interface Request {
       /** The session's CSRF token (created on first use); set by `csrfProtection()`. */
-      csrfToken(): string;
+      /** Set by core's CSRF protection; undefined when CSRF_ENABLED=false. */
+      csrfToken?(): string;
     }
   }
 }
