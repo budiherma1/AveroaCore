@@ -1,9 +1,7 @@
-class {{middleware}} {
+class {{ middleware }} {
   handle(req, res, next) {
-	console.log('middleware');
     next();
   }
 }
 
-export default new {{middleware}};
-
+export default new {{ middleware }}();

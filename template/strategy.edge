@@ -1,14 +1,20 @@
 import passport from 'passport';
 
-class {{name}} {
+class {{ name }} {
+  /** Called once at startup by @averoa/core. */
   config() {
-    // passport.use
+    // passport.use('{{ name }}', new Strategy(options, verify));
   }
 
+  /** Route middleware: authenticate the request with this strategy. */
   authenticate(req, res, next) {
-    // passport.authenticate
+    return passport.authenticate('{{ name }}', { session: false }, (err, user) => {
+      if (err) return next(err);
+      if (!user) return res.status(401).json({ status: false, message: 'Unauthorized' });
+      req.user = user;
+      return next();
+    })(req, res, next);
   }
 }
 
-export default new {{name}};
-
+export default new {{ name }}();

@@ -1,20 +1,75 @@
 {
   "name": "@averoa/core",
-  "version": "1.0.35",
-  "description": "",
+  "version": "2.0.0",
+  "description": "Core of AveroaJS: builds the Express 5 app (security headers, sessions, CSRF, CORS, views, routes, error handling) and the averoa CLI",
   "main": "index.js",
   "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./knexfile": "./knexfile.js",
+    "./package.json": "./package.json",
+    "./*": "./*"
+  },
+  "files": [
+    "index.js",
+    "env.js",
+    "cors.js",
+    "csrf.js",
+    "uploads.js",
+    "edge-js.js",
+    "morgan.js",
+    "knexfile.js",
+    "command.js",
+    "template/",
+    "CHANGELOG.md",
+    "README.md"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/*.test.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/budiherma1/AveroaCore.git"
   },
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "averoajs",
+    "express",
+    "framework"
+  ],
+  "author": "Budi Hermawan",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/budiherma1/AveroaCore/issues"
   },
-  "homepage": "https://github.com/budiherma1/AveroaCore#readme"
+  "homepage": "https://github.com/budiherma1/AveroaCore#readme",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "peerDependencies": {
+    "@averoa/routes": "^3.0.0",
+    "@averoa/utilities": "^2.0.0",
+    "edge.js": "^5.5.1",
+    "express": "^5.1.0",
+    "knex": "^3.1.0",
+    "objection": "^3.1.5",
+    "passport": "^0.7.0"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^12.1.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.0",
+    "express-session": "^1.18.1",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^11.10.0",
+    "edge.js": "^5.5.1",
+    "express": "^5.1.0",
+    "knex": "^3.1.0",
+    "objection": "^3.1.5",
+    "passport": "^0.7.0"
+  }
 }

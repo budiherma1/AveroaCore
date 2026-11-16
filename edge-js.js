@@ -1,53 +1,70 @@
-'use strict';
+import path from 'path';
 
-import {Edge} from 'edge.js';
-// import path from 'path';
-let edge = new Edge({cache: false});
-// const __dirname = path.resolve();
-// edge.mount(path.join(__dirname, '/resources/views'))
+/**
+ * Edge view engine wiring for Express.
+ *
+ * Core does not create its own Edge instance: it uses the single shared
+ * instance exported by @averoa/utilities as `View` (mounted at
+ * resources/views, cache on in production). Everything here runs ONCE at
+ * startup — not per request.
+ */
 
-export var engine = function engine(req, res, next) {
-  /*
-  |-------------------------------------------------------------------------------------------------
-  | Override the app.render function so that we can use dot notation
-  |-------------------------------------------------------------------------------------------------
-  */
+/**
+ * Convert a dot-notation view name to a path: 'users.list' → 'users/list'.
+ * A trailing '.edge' extension is kept as the extension, and absolute paths
+ * are left untouched.
+ */
+export function toViewPath(view) {
+  if (typeof view !== 'string' || path.isAbsolute(view)) return view;
+  const name = view.endsWith('.edge') ? view.slice(0, -'.edge'.length) : view;
+  return name.replace(/\./g, '/');
+}
 
-  var render = res.render;
-
-
-  res.render = function _render(view, options, callback) {
-    var self = this;
-
-    render.call(self, view.replace(/\./gi, '/'), options, callback);
+/** App-level middleware: let `res.render('users.list')` use dot notation. */
+export function dotNotation(req, res, next) {
+  const render = res.render;
+  res.render = function renderWithDots(view, ...args) {
+    return render.call(this, toViewPath(view), ...args);
   };
+  next();
+}
 
-  /*
-  |-------------------------------------------------------------------------------------------------
-  | Register the edge view engine
-  |-------------------------------------------------------------------------------------------------
-  */
+/**
+ * Register the `edge` engine on an express app.
+ *
+ * @param {import('express').Express} app
+ * @param {object} View      the shared Edge instance (@averoa/utilities View)
+ * @param {object} [options]
+ * @param {string} options.views    absolute views directory (Edge's mount)
+ * @param {object} [options.globals] globals to register once (ViewProvider.global())
+ */
+export function registerViewEngine(app, View, { views, globals } = {}) {
+  if (!View || typeof View.render !== 'function') {
+    throw new Error('@averoa/core: @averoa/utilities did not export a usable `View` (Edge instance)');
+  }
 
-  req.app.engine('edge', function (filePath, options, callback) {
-    edge.mount(req.app.settings.views);
+  for (const [name, value] of Object.entries(globals ?? {})) {
+    View.global(name, value);
+  }
 
-    edge.render(filePath, options).then(function (content) {
-      return callback(null, content);
-    }).catch(function (err) {
-      return callback(err);
-    });
+  app.set('views', views);
+  app.set('view engine', 'edge');
+
+  app.engine('edge', (filePath, options, callback) => {
+    // Express hands us an absolute file path; Edge resolves names relative
+    // to its mounted directory, so translate back to a template name.
+    const relative = path.relative(views, filePath);
+    const template = relative.startsWith('..') || path.isAbsolute(relative)
+      ? filePath
+      : relative.replace(/\.edge$/, '').split(path.sep).join('/');
+
+    View.render(template, options).then(
+      (html) => callback(null, html),
+      (err) => callback(err),
+    );
   });
 
-  /*
-  |-------------------------------------------------------------------------------------------------
-  | Set the app view engine
-  |-------------------------------------------------------------------------------------------------
-  */
+  app.use(dotNotation);
+}
 
-  req.app.set('view engine', 'edge');
-
-  next();
-};
-
-
-export default edge
+export default registerViewEngine;

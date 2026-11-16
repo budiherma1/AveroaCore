@@ -1,31 +1,33 @@
 import { Crud } from '@averoa/utilities';
 
-class {{controller}} {
+// Validation (422) and missing-id (404) responses are produced by the model
+// hooks that `router.crud()` runs before these methods. Thrown/rejected
+// errors are forwarded to the error handler by Express 5.
+class {{ controller }} {
   async create(req, res) {
-    const data = await Crud.create('{{model}}', req);
-    res.send(data);
+    const data = await Crud.create('{{ model }}', req);
+    res.json(data);
   }
 
   async findAll(req, res) {
-    const data = await Crud.findAll('{{model}}', req);
-    res.send(data);
+    const data = await Crud.findAll('{{ model }}', req);
+    res.json(data);
   }
 
   async findOne(req, res) {
-    const data = await Crud.findOne('{{model}}', req);
-    res.send(data);
+    const data = await Crud.findOne('{{ model }}', req);
+    res.json(data);
   }
 
   async update(req, res) {
-    const data = await Crud.update('{{model}}', req);
-    res.send(data);
+    const data = await Crud.update('{{ model }}', req);
+    res.json(data);
   }
 
   async delete(req, res) {
-    const data = await Crud.delete('{{model}}', req);
-    res.send(data);
+    const data = await Crud.delete('{{ model }}', req);
+    res.json(data);
   }
 }
 
-export default new {{controller}};
-
+export default new {{ controller }}();

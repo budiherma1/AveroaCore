@@ -1,23 +1,26 @@
 import { Model } from '@averoa/utilities';
 
-class {{model}} extends Model {
-  static tableName = '{{db}}';
+class {{ model }} extends Model {
+  static tableName = '{{ db }}';
 
+  // false disables created_at/updated_at/deleted_at and soft delete
   static timestamp = true;
+
+  // columns that are never serialized and never selectable through $select
+  static hidden = [];
 
   static column = {
     id: {
       migration: (m) => m.table.increments(m.column).primary(),
       flag: { required: false },
     },
-    sample_column: {
-      migration: (m) => m.table.string(m.column, 50).nullable(),
-      seed: (f) => f.name.firstName(),
+    email: {
+      migration: (m) => m.table.string(m.column, 100).nullable(),
+      seed: (f) => f.internet.email(),
       flag: { unique: true },
-      validation: [{ run: (v) => v.validator.isEmail(v.value), msg: 'email format required' }],
+      validation: [{ run: (v) => v.validator.isEmail(String(v.value ?? '')), msg: 'email format required' }],
     },
   };
 }
 
-export default {{model}};
-
+export default {{ model }};
