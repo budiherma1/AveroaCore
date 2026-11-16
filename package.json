@@ -86,6 +86,8 @@
     "morgan": "^1.10.0"
   },
   "devDependencies": {
+    "@averoa/routes": "^3.0.1",
+    "@averoa/utilities": "^2.0.2",
     "@seriousme/openapi-schema-validator": "^2.11.0",
     "better-sqlite3": "^11.10.0",
     "connect-redis": "^9.0.0",
