@@ -29,7 +29,10 @@ const normalizeExt = (ext) => String(ext).trim().toLowerCase().replace(/^\.+/, '
  * Priority: `inlineExtensions` (from AppProvider.uploads()) → UPLOAD_INLINE_EXTENSIONS → defaults.
  * @returns {Set<string>} lower-case extensions without the dot
  */
-export function resolveInlineExtensions({ inlineExtensions, env = process.env.UPLOAD_INLINE_EXTENSIONS } = {}) {
+export function resolveInlineExtensions({
+  inlineExtensions,
+  env = process.env.UPLOAD_INLINE_EXTENSIONS,
+} = {}) {
   let list = inlineExtensions;
   if (!Array.isArray(list)) {
     list = (env !== undefined && String(env).trim() !== '')

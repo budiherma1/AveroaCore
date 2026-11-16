@@ -155,8 +155,8 @@ describe('Redis session and rate-limit stores', { skip: REDIS_URL ? false : 'AVE
       const app = express();
       app.post('/login', rateLimit({ name: 'login', windowMs: 60000, limit: 2 }), (req, res) => res.json({ ok: true }));
       app.post('/other', rateLimit({ name: 'other', windowMs: 60000, limit: 2 }), (req, res) => res.json({ ok: true }));
-      // eslint-disable-next-line no-unused-vars
-      app.use((err, req, res, next) => res.status(err.status ?? 500).json({ code: err.code, message: err.message }));
+      app.use((err, req, res, next) => res.status(err.status ?? 500)
+        .json({ code: err.code, message: err.message }));
       servers.push(await listen(app));
     }
     const [a, b] = servers;

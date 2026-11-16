@@ -128,7 +128,10 @@ export class RedisRateLimitStore {
     this.ready = loadOptional('rate-limit-redis', feature).then(({ RedisStore }) => {
       const inner = new RedisStore({
         prefix: this.prefix,
-        sendCommand: async (...args) => (await getRedisClient({ url: this.url, feature, log: defaultLog })).sendCommand(args),
+        sendCommand: async (...args) => {
+          const client = await getRedisClient({ url: this.url, feature, log: defaultLog });
+          return client.sendCommand(args);
+        },
       });
       // loading the scripts can fail while Redis is down; rate-limit-redis
       // reloads them on the next command

@@ -11,7 +11,9 @@ process.env.AVEROA_ROOT = tmp;
 const { buildProgram, validateName, titleCase, migrationTimestamp, TEMPLATE_DIR } = await import('../command.js');
 
 const read = (rel) => fs.readFileSync(path.join(tmp, rel), 'utf8');
-const run = (...args) => buildProgram().exitOverride().configureOutput({ writeOut() {}, writeErr() {} })
+const run = (...args) => buildProgram()
+  .exitOverride()
+  .configureOutput({ writeOut() {}, writeErr() {} })
   .parseAsync(['node', 'averoa', ...args]);
 
 let log;
@@ -163,14 +165,14 @@ test('C-d: make:crud without routes/api.js fails with a clear error and writes n
   const saved = fs.readFileSync(api, 'utf8');
   fs.rmSync(api);
   try {
-    const before = snapshot(tmp);
+    const unchanged = snapshot(tmp);
     await assert.rejects(() => run('make:crud', 'invoices'), (err) => {
       assert.match(err.message, /routes\/api\.js not found/);
       assert.match(err.message, /--init/);
       assert.doesNotMatch(err.message, /ENOENT/);
       return true;
     });
-    assert.deepEqual(snapshot(tmp), before, 'no file written or changed');
+    assert.deepEqual(snapshot(tmp), unchanged, 'no file written or changed');
     assert.equal(fs.existsSync(path.join(tmp, 'app', 'Models', 'Invoices.js')), false);
   } finally {
     fs.writeFileSync(api, saved);
@@ -179,17 +181,17 @@ test('C-d: make:crud without routes/api.js fails with a clear error and writes n
 
 test('C-d: make:crud refuses up front when any target exists (nothing written for the other tables)', async () => {
   // UserCategories exists from the earlier make:crud test
-  const before = snapshot(tmp);
+  const unchanged = snapshot(tmp);
   await assert.rejects(() => run('make:crud', 'payments,user_categories'), (err) => {
     assert.match(err.message, /app\/Models\/UserCategories\.js/);
     assert.match(err.message, /--force/);
     assert.match(err.message, /nothing was written/);
     return true;
   });
-  assert.deepEqual(snapshot(tmp), before, 'Payments was not generated either');
+  assert.deepEqual(snapshot(tmp), unchanged, 'Payments was not generated either');
 
   await assert.rejects(() => run('make:crud', 'payments', '--init'), /routes\/api\.js already exists/);
-  assert.deepEqual(snapshot(tmp), before, '--init without --force writes nothing');
+  assert.deepEqual(snapshot(tmp), unchanged, '--init without --force writes nothing');
 });
 
 test('C-d: re-running make:crud --force does not duplicate route blocks, migrations or seeds', async () => {
@@ -208,9 +210,9 @@ test('C-d: re-running make:crud --force does not duplicate route blocks, migrati
 
   // a new table next to existing ones only appends the new block
   await run('make:crud', 'orders,refunds', '--force');
-  const after = read('routes/api.js');
-  assert.equal(after.match(/router\.crud\('Orders'/g).length, 1);
-  assert.equal(after.match(/router\.crud\('Refunds', 'refunds'/g).length, 1);
+  const updated = read('routes/api.js');
+  assert.equal(updated.match(/router\.crud\('Orders'/g).length, 1);
+  assert.equal(updated.match(/router\.crud\('Refunds', 'refunds'/g).length, 1);
 });
 
 /* C-e: titleCase keeps inner capitals ---------------------------------------- */
@@ -279,7 +281,6 @@ test('C-j: generated crud controller responds with result.statusCode, 400 for a 
     ['delete', { status: true }, 200],
   ];
   for (const [method, result, expected] of cases) {
-    // eslint-disable-next-line no-await-in-loop
     const res = await call(method, result);
     assert.equal(res.statusCode, expected, `${method} ${JSON.stringify(result)}`);
     assert.deepEqual(res.body, result);
@@ -293,10 +294,10 @@ test('C-k: make:crud names migrations and seeds YYYYMMDDHHMMSS_<Model>.js (knex 
   assert.equal(migrationTimestamp(new Date(Date.UTC(2026, 0, 2, 3, 4, 5))), '20260102030405');
 
   const dir = path.join(tmp, 'database', 'migrations');
-  const before = new Set(fs.readdirSync(dir));
+  const existing = new Set(fs.readdirSync(dir));
   const start = migrationTimestamp();
   await run('make:crud', 'alpha_items,beta_items,gamma_items');
-  const created = fs.readdirSync(dir).filter((f) => !before.has(f)).sort();
+  const created = fs.readdirSync(dir).filter((f) => !existing.has(f)).sort();
   assert.equal(created.length, 3);
   for (const f of created) assert.match(f, /^\d{14}_[A-Za-z]+\.js$/, f);
   assert.deepEqual(created.map((f) => f.replace(/^\d+_/, '')), ['AlphaItems.js', 'BetaItems.js', 'GammaItems.js'], 'sorted in the order given');
@@ -304,7 +305,10 @@ test('C-k: make:crud names migrations and seeds YYYYMMDDHHMMSS_<Model>.js (knex 
   // same width as knex's names, so they sort chronologically with knex-made ones
   const knexEarlier = '20000101000000_knex_made.js';
   const knexLater = '29991231235959_knex_made.js';
-  assert.deepEqual([knexLater, ...created, knexEarlier].sort(), [knexEarlier, ...created, knexLater]);
+  assert.deepEqual(
+    [knexLater, ...created, knexEarlier].sort(),
+    [knexEarlier, ...created, knexLater],
+  );
 
   const seeds = fs.readdirSync(path.join(tmp, 'database', 'seeds')).filter((f) => /_(Alpha|Beta|Gamma)Items\.js$/.test(f));
   assert.equal(seeds.length, 3);

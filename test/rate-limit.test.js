@@ -193,7 +193,6 @@ test('rateLimit() factory: per-route limiter with custom key, message and skipSu
     keyGenerator: (req) => `${ipKeyGenerator(req.ip)}:${String(req.body?.email ?? '').toLowerCase()}`,
   });
   app.post('/login', login, (req, res) => res.status(req.body.password === 'ok' ? 200 : 401).json({}));
-  // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     errors.push(err);
     res.status(err.status).json({ status: false, message: err.message, code: err.code });

@@ -32,7 +32,8 @@ const streams = new Map();
 
 const logStream = (file) => {
   const existing = streams.get(file);
-  if (existing && !existing.destroyed && !existing.closed && !existing.writableEnded) return existing;
+  const usable = existing && !existing.destroyed && !existing.closed && !existing.writableEnded;
+  if (usable) return existing;
   const stream = fs.createWriteStream(file, { flags: 'a' });
   streams.set(file, stream);
   return stream;

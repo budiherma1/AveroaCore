@@ -139,7 +139,7 @@ function notFound(req, res, next) {
 }
 
 function errorHandler(Log) {
-  // eslint-disable-next-line no-unused-vars
+  // Express recognises an error handler by its four parameters
   return function averoaErrorHandler(err, req, res, next) {
     if (res.headersSent) return next(err);
 
@@ -239,7 +239,10 @@ async function build(options = {}) {
     const { enabled: _enabled, ...defaults } = rateLimitDefaults;
     const custom = AppProvider.rateLimit ? await AppProvider.rateLimit({ ...defaults }) : undefined;
     if (custom !== false) {
-      const { path: limitPath = defaults.path, ...limitOptions } = { ...defaults, ...(custom ?? {}) };
+      const { path: limitPath = defaults.path, ...limitOptions } = {
+        ...defaults,
+        ...(custom ?? {}),
+      };
       app.use(limitPath, rateLimit(limitOptions));
     }
   }
@@ -360,6 +363,7 @@ export async function start(options = {}) {
 
   const actualPort = server.address()?.port ?? port;
   const host = process.env.APP_HOST || 'http://localhost';
+  // eslint-disable-next-line no-console -- the startup line goes to stdout by design
   console.log(chalk.blueBright(`AveroaJS listening on ${host}:${actualPort}`));
 
   await AppProvider.server?.(server);
@@ -439,7 +443,8 @@ export {
 } from './rate-limit.js';
 export { getRedisClient, closeRedis } from './redis.js';
 export {
-  requestId, restoreRequestContext, requestContext, currentRequestId, isValidRequestId, trustIncomingRequestId,
+  requestId, restoreRequestContext, requestContext, currentRequestId, isValidRequestId,
+  trustIncomingRequestId,
 } from './request-id.js';
 export { createHealth, healthSettings } from './health.js';
 export { default as env } from './env.js';

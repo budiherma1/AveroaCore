@@ -113,7 +113,6 @@ test('C15: only NODE_ENV development/test count as development', () => {
 
 test('C15: empty whitelist with NODE_ENV staging/unset does NOT reflect origins with credentials', async () => {
   for (const env of ['staging', undefined, 'production']) {
-    // eslint-disable-next-line no-await-in-loop
     await withNodeEnv(env, async () => {
       const srv = await corsServer({ whitelist: '' });
       try {
@@ -145,7 +144,6 @@ test('C16: TRUST_PROXY unset/false/0 does not count as trusting a proxy', () => 
 
 test('C16: behind a TLS proxy without TRUST_PROXY the app\'s own https origin is same-origin', async () => {
   for (const trustProxy of ['', 'false']) {
-    // eslint-disable-next-line no-await-in-loop
     const srv = await corsServer({ whitelist: 'https://partner.io', production: true, trustProxy });
     const host = new URL(srv.url).host;
     try {
@@ -160,7 +158,6 @@ test('C16: behind a TLS proxy without TRUST_PROXY the app\'s own https origin is
       res = await fetch(`${srv.url}/x`, { headers: { origin: 'https://evil.io' } });
       assert.equal(res.status, 403);
     } finally {
-      // eslint-disable-next-line no-await-in-loop
       await srv.close();
     }
   }
@@ -208,17 +205,14 @@ test('C16: with TRUST_PROXY set the scheme is compared (X-Forwarded-Proto)', asy
 
 test('C-c: CORS_WHITELIST="*" allows every origin WITHOUT credentials (never reflected)', async () => {
   for (const production of [true, false]) {
-    // eslint-disable-next-line no-await-in-loop
     const srv = await corsServer({ whitelist: '*', production });
     try {
-      // eslint-disable-next-line no-await-in-loop
       const res = await fetch(`${srv.url}/x`, { headers: { origin: 'https://evil.io' } });
       assert.equal(res.status, 200);
       assert.equal(res.headers.get('access-control-allow-origin'), '*', `production=${production}`);
       assert.equal(res.headers.get('access-control-allow-credentials'), null, `production=${production}`);
 
       // preflight
-      // eslint-disable-next-line no-await-in-loop
       const pre = await fetch(`${srv.url}/x`, {
         method: 'OPTIONS',
         headers: { origin: 'https://evil.io', 'access-control-request-method': 'PUT' },
@@ -226,7 +220,6 @@ test('C-c: CORS_WHITELIST="*" allows every origin WITHOUT credentials (never ref
       assert.equal(pre.headers.get('access-control-allow-origin'), '*');
       assert.equal(pre.headers.get('access-control-allow-credentials'), null);
     } finally {
-      // eslint-disable-next-line no-await-in-loop
       await srv.close();
     }
   }

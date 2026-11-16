@@ -176,7 +176,8 @@ function columnTypes(def, column) {
       }
       break;
     default:
-      // decimal (a string on MySQL / PostgreSQL), json, binary, specificType, ...: undocumented type
+      // decimal (a string on MySQL / PostgreSQL), json, binary, specificType, ...:
+      // undocumented type
       break;
   }
   const notNull = autoIncrement || modifiers.has('notNullable') || modifiers.has('primary');
@@ -199,7 +200,8 @@ const usesSoftDelete = (Model) => Model?.timestamp !== false;
 function writableOf(Model) {
   if (typeof Model.writableColumns === 'function') return Model.writableColumns();
   const ids = [].concat(Model.idColumn ?? 'id');
-  return Object.keys(Model.column ?? {}).filter((c) => !ids.includes(c) && !TIMESTAMP_COLUMNS.includes(c)
+  return Object.keys(Model.column ?? {}).filter((c) => !ids.includes(c)
+    && !TIMESTAMP_COLUMNS.includes(c)
     && !hiddenOf(Model).includes(c));
 }
 
@@ -508,7 +510,7 @@ function crudKind(route) {
   }
 }
 
-/** JSON Schemas of validate() middleware on the route (via @averoa/utilities describeValidation). */
+/** JSON Schemas of validate() middleware on the route (@averoa/utilities describeValidation). */
 function validationSchemas(route, describeValidation) {
   if (typeof describeValidation !== 'function') return [];
   const out = [];
@@ -526,8 +528,10 @@ function validationSchemas(route, describeValidation) {
  * @param {object} options
  * @param {Array<object>} options.routes  `router.describe()` of the API router
  * @param {string} [options.prefix='/api']  where the router is mounted
- * @param {object} [options.info]  OpenAPI info (default: name/version/description of the app's package.json)
- * @param {Record<string, Function>} [options.models]  extra models (e.g. app/Models/index.js) added to components
+ * @param {object} [options.info]  OpenAPI info (default: name/version/description of the app's
+ *   package.json)
+ * @param {Record<string, Function>} [options.models]  extra models (e.g. app/Models/index.js)
+ *   added to components
  * @param {string[]} [options.authMiddleware]  middleware names that require a bearer token
  * @param {Function} [options.describeValidation]  from @averoa/utilities
  * @returns {object}
@@ -588,7 +592,8 @@ export function buildOpenApiDocument({
     const kind = Model ? crudKind(route) : null;
 
     // tags / summary / ids
-    const tags = doc.tags ?? (modelName ? [modelName] : [controllerTag(route.handler)].filter(Boolean));
+    const tags = doc.tags
+      ?? (modelName ? [modelName] : [controllerTag(route.handler)].filter(Boolean));
     if (tags.length) operation.tags = tags;
     const summary = doc.summary ?? (kind ? CRUD_SUMMARY[kind](modelName) : undefined);
     if (summary) operation.summary = summary;
@@ -630,7 +635,13 @@ export function buildOpenApiDocument({
     for (const [section, location] of Object.entries(SECTION_LOCATION)) {
       docParams.push(...objectParameters(toJsonSchema(doc.request?.[section]), location));
     }
-    const parameters = mergeParameters(pathParams, crudParams, validationParams, docParams, doc.parameters)
+    const parameters = mergeParameters(
+      pathParams,
+      crudParams,
+      validationParams,
+      docParams,
+      doc.parameters,
+    )
       // a path parameter must exist in the template
       .filter((p) => p.in !== 'path' || route.params.some((rp) => rp.name === p.name));
     if (parameters.length) operation.parameters = parameters;
@@ -780,7 +791,7 @@ const escapeHtml = (value) => String(value)
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
 
-/** Content-Security-Policy of the docs page: the pinned CDN files, the page's own nonce, no eval. */
+/** CSP of the docs page: the pinned CDN files, the page's own nonce, no eval. */
 export function docsContentSecurityPolicy(nonce) {
   return [
     "default-src 'self'",

@@ -189,23 +189,17 @@ test('C-a: error details are hidden unless NODE_ENV is development or test (stag
     for (const env of ['staging', undefined, '', 'Production']) {
       if (env === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = env;
-      // eslint-disable-next-line no-await-in-loop
       let res = await fetch(`${srv.url}/api/boom`);
       assert.equal(res.status, 500);
-      // eslint-disable-next-line no-await-in-loop
       assert.deepEqual(await res.json(), { status: false, message: 'Internal Server Error', requestId: res.headers.get('x-request-id') }, `NODE_ENV=${env}`);
 
-      // eslint-disable-next-line no-await-in-loop
       res = await fetch(`${srv.url}/boom`, { headers: { accept: 'text/html' } });
-      // eslint-disable-next-line no-await-in-loop
       const html = await res.text();
       assert.doesNotMatch(html, /secret internals/, `NODE_ENV=${env}`);
       assert.doesNotMatch(html, /<pre>/, `NODE_ENV=${env}`);
 
       // 4xx messages are still shown, without a stack
-      // eslint-disable-next-line no-await-in-loop
       res = await fetch(`${srv.url}/api/does-not-exist`);
-      // eslint-disable-next-line no-await-in-loop
       assert.deepEqual(await res.json(), { status: false, message: 'Not Found', requestId: res.headers.get('x-request-id') }, `NODE_ENV=${env}`);
     }
 
@@ -326,7 +320,6 @@ test('C11: /api POST with an Authorization header or without a logged-in session
 
 test('C1: uploaded html/svg/js/extensionless files are attachments with a sandbox CSP', async () => {
   for (const name of ['evil.html', 'evil.svg', 'evil.js', 'noext']) {
-    // eslint-disable-next-line no-await-in-loop
     const res = await fetch(`${srv.url}/upload/${name}`);
     assert.equal(res.status, 200, name);
     assert.match(res.headers.get('content-disposition') ?? '', /^attachment/, name);
@@ -377,12 +370,11 @@ test('C1: AppProvider.uploads() can change the inline allowlist or disable /uplo
 /* C-g: log streams are opened once per process, not per createApp() -------- */
 
 test('C-g: repeated createApp() reuses the access/error log streams; closeLogStreams() closes them', async () => {
-  const before = getLogStreams();
-  assert.equal(before.size, 2, 'access.log + error.log');
-  const [access, error] = [...before.values()];
+  const initial = getLogStreams();
+  assert.equal(initial.size, 2, 'access.log + error.log');
+  const [access, error] = [...initial.values()];
 
   for (let i = 0; i < 5; i += 1) {
-    // eslint-disable-next-line no-await-in-loop
     await createApp();
   }
   const afterBuilds = getLogStreams();

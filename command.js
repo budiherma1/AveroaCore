@@ -80,7 +80,7 @@ export async function writeAppFile(relativePath, content, { force = false } = {}
     await fs.writeFile(abs, content, { flag: force ? 'w' : 'wx' });
   } catch (err) {
     if (err.code === 'EEXIST') {
-      throw new Error(`${rel(abs)} already exists (use --force to overwrite).`);
+      throw new Error(`${rel(abs)} already exists (use --force to overwrite).`, { cause: err });
     }
     throw err;
   }
@@ -145,6 +145,8 @@ const exists = async (abs) => {
   }
 };
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /** Existing `<timestamp>_<Model>.js` in a migrations/seeds dir, if any. */
 async function findStamped(dir, model) {
   let names = [];
@@ -157,8 +159,6 @@ async function findStamped(dir, model) {
   const match = names.filter((n) => re.test(n)).sort();
   return match.length ? `${dir}/${match[match.length - 1]}` : null;
 }
-
-const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Is a `router.crud('Model', 'path'` block already in routes/api.js? */
 const hasCrudRoute = (source, route) => new RegExp(
@@ -217,7 +217,10 @@ export async function makeCrud(list, { force = false, init = false } = {}) {
       current = await fs.readFile(apiFile, 'utf8');
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
-      throw new Error('routes/api.js not found. Run make:crud with --init to create it (nothing was written).');
+      throw new Error(
+        'routes/api.js not found. Run make:crud with --init to create it (nothing was written).',
+        { cause: err },
+      );
     }
     const marker = 'export default router;';
     if (!current.includes(marker)) {

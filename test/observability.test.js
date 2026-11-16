@@ -140,7 +140,6 @@ test('request id: a valid incoming id is accepted when trusted; invalid ones are
       assert.equal(body.seen.timer, 'edge-req-42');
 
       for (const bad of ['a'.repeat(129), 'bad id', '<x>', 'a,b']) {
-        // eslint-disable-next-line no-await-in-loop
         res = await fetch(`${url}/api/ping`, { headers: { 'x-request-id': bad } });
         assert.match(res.headers.get('x-request-id'), UUID, `rejected: ${bad.slice(0, 20)}`);
       }
@@ -150,7 +149,6 @@ test('request id: a valid incoming id is accepted when trusted; invalid ones are
 
 test('request id: an incoming id is ignored unless trusted (no TRUST_PROXY / TRUST_REQUEST_ID=false)', async () => {
   for (const vars of [{}, { TRUST_PROXY: '1', TRUST_REQUEST_ID: 'false' }]) {
-    // eslint-disable-next-line no-await-in-loop
     await withEnv(vars, async () => {
       const { app } = await createApp();
       await withServer(app, async (url) => {
@@ -289,7 +287,7 @@ test('access log: files keep the combined format by default; ACCESS_LOG_FORMAT=j
     channel: 'both', fileFormat: 'json', consoleFormat: 'json', stdout: out,
   });
   json.get('/json', (req, res) => res.status(404).end());
-  await withServer(json, async (url) => { await (await fetch(url + '/json')).text(); });
+  await withServer(json, async (url) => { await (await fetch(`${url}/json`)).text(); });
   await closeLogStreams();
   const lastAccess = JSON.parse(fs.readFileSync(path.join(dir, 'access.log'), 'utf8').trim().split('\n').pop());
   const lastError = JSON.parse(fs.readFileSync(path.join(dir, 'error.log'), 'utf8').trim().split('\n').pop());
