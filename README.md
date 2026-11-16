@@ -834,6 +834,10 @@ bootstrap, sessions, CSRF, CORS, uploads, the view engine, the error handler, re
 probes and graceful shutdown, the CLI generators and the knexfile
 (including a real `knex migrate` run with `better-sqlite3`, a dev dependency).
 
+One test checks the `queue` readiness check against a real RabbitMQ and is skipped unless `AVEROA_TEST_AMQP_URL` is
+set, e.g. `docker run -d --rm -p 25673:5672 rabbitmq:4.1-alpine` and
+`AVEROA_TEST_AMQP_URL=amqp://127.0.0.1:25673 npm test`.
+
 The repository's `.npmrc` sets `legacy-peer-deps=true`. To run the tests against local checkouts of
 `../AveroaUtilities` and `../AveroaRoute` instead of the published versions, run `node scripts/link-siblings.mjs`
 after every `npm install`.

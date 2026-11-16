@@ -488,3 +488,41 @@ test('graceful shutdown: readiness flips to 503 before the server closes', async
     else delete providers.AppProvider.shutdown;
   }
 });
+
+test('READY_CHECKS=queue checks the RabbitMQ connection of @averoa/utilities', async () => {
+  const { queueCheck } = await import('../health.js');
+  await queueCheck(async () => ({ getConnection: async () => ({}) }))();
+  await assert.rejects(queueCheck(async () => ({ getConnection: async () => { throw new Error('ECONNREFUSED'); } }))(), /ECONNREFUSED/);
+
+  // real module, no broker configured → down with a clear message
+  await withEnv({ READY_CHECKS: 'database,queue', RABBITMQ_SERVER: undefined }, async () => {
+    const { app } = await createApp();
+    await withServer(app, async (url) => {
+      const res = await fetch(`${url}/ready`);
+      assert.equal(res.status, 503);
+      const { checks } = await res.json();
+      assert.equal(checks.database.status, 'up');
+      assert.equal(checks.queue.status, 'down');
+      assert.match(checks.queue.error, /no AMQP server configured/);
+    });
+  });
+});
+
+// Needs a broker, e.g. `docker run -d --rm -p 25673:5672 rabbitmq:4.1-alpine` and
+// AVEROA_TEST_AMQP_URL=amqp://127.0.0.1:25673 npm test
+test('READY_CHECKS=queue against a real RabbitMQ', { skip: !process.env.AVEROA_TEST_AMQP_URL && 'AVEROA_TEST_AMQP_URL not set' }, async () => {
+  const { closeQueue } = utilities;
+  await withEnv({ READY_CHECKS: 'database,queue', RABBITMQ_SERVER: process.env.AVEROA_TEST_AMQP_URL }, async () => {
+    const { app } = await createApp();
+    try {
+      await withServer(app, async (url) => {
+        const res = await fetch(`${url}/ready`);
+        const body = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(body));
+        assert.equal(body.checks.queue.status, 'up');
+      });
+    } finally {
+      await closeQueue();
+    }
+  });
+});
