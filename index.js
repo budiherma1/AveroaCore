@@ -14,6 +14,8 @@ import morgan, { closeLogStreams } from './morgan.js';
 import { registerViewEngine } from './edge-js.js';
 import { csrfProtection } from './csrf.js';
 import { uploadStatic } from './uploads.js';
+import { requestId, restoreRequestContext } from './request-id.js';
+import { createHealth } from './health.js';
 
 const API_PREFIX = '/api';
 
@@ -149,6 +151,7 @@ function errorHandler(Log) {
 
     const body = { status: false, message };
     if (err?.code && expose) body.code = err.code;
+    if (req.id) body.requestId = req.id;
     if (showDetails && err?.stack) body.stack = err.stack;
 
     res.status(status);
@@ -157,6 +160,7 @@ function errorHandler(Log) {
     return res.type('html').send(
       `<!doctype html><html><head><meta charset="utf-8"><title>${status}</title></head>`
       + `<body><h1>${status}</h1><p>${escapeHtml(message)}</p>`
+      + `${req.id ? `<p>Request ID: <code>${escapeHtml(req.id)}</code></p>` : ''}`
       + `${body.stack ? `<pre>${escapeHtml(body.stack)}</pre>` : ''}</body></html>`,
     );
   };
@@ -198,6 +202,13 @@ async function build(options = {}) {
   const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
   if (trustProxy !== undefined) app.set('trust proxy', trustProxy);
 
+  // request id + AsyncLocalStorage context for everything that follows
+  app.use(requestId());
+
+  // health probes: before sessions, CSRF, rate limiting and the access log
+  const health = await createHealth({ getKnex: () => resolveKnex(utilities), AppProvider, log });
+  app.use(health.middleware);
+
   await AppProvider.beginning?.(app);
 
   morgan(app);
@@ -214,12 +225,16 @@ async function build(options = {}) {
   app.use(express.json({ limit }));
   app.use(express.urlencoded({ extended: true, limit }));
   app.use(cookieParser());
+  // body parsers resume from stream events, outside the request context
+  app.use(restoreRequestContext());
 
   // session + passport
   const extraSession = AppProvider.session ? await AppProvider.session() : undefined;
   app.use(session(sessionOptions({ extra: extraSession, log })));
   app.use(passport.initialize());
   app.use(passport.session());
+  // session stores answer from their own callbacks
+  app.use(restoreRequestContext());
 
   const strategies = (await importApp('app/Strategies/index.js', { optional: true })) ?? {};
   for (const strategy of Object.values(strategies)) {
@@ -262,7 +277,9 @@ async function build(options = {}) {
   app.use(notFound);
   app.use(errorHandler(Log));
 
-  return { app, utilities, AppProvider, log };
+  return {
+    app, utilities, AppProvider, log, health,
+  };
 }
 
 /**
@@ -270,11 +287,12 @@ async function build(options = {}) {
  * by tests.
  *
  * @param {object} [options]
- * @returns {Promise<{ app: import('express').Express }>}
+ * @returns {Promise<{ app: import('express').Express, health: object }>}
+ *   `health` drives /ready: `health.markShuttingDown()`, `health.readiness()`.
  */
 export async function createApp(options = {}) {
-  const { app } = await build(options);
-  return { app };
+  const { app, health } = await build(options);
+  return { app, health };
 }
 
 /**
@@ -284,10 +302,15 @@ export async function createApp(options = {}) {
  * @param {number|string} [options.port]  defaults to APP_PORT, then 3000
  * @param {string}  [options.host]        listen hostname (default: all interfaces)
  * @param {boolean} [options.handleSignals=true] graceful shutdown on SIGTERM/SIGINT
- * @returns {Promise<{ app: import('express').Express, server: import('http').Server }>}
+ * @returns {Promise<{ app: import('express').Express, server: import('http').Server,
+ *   health: object, close: (reason?: string) => Promise<number> }>}
+ *   `close()` runs the graceful shutdown (without exiting the process) and
+ *   resolves the exit code the signal handler would use.
  */
 export async function start(options = {}) {
-  const { app, utilities, AppProvider, log } = await build(options);
+  const {
+    app, utilities, AppProvider, log, health,
+  } = await build(options);
   const port = options.port ?? process.env.APP_PORT ?? 3000;
 
   const server = http.createServer(app);
@@ -305,45 +328,74 @@ export async function start(options = {}) {
 
   await AppProvider.server?.(server);
 
-  if (options.handleSignals !== false) {
-    let closing = false;
-    const shutdown = async (signal) => {
-      if (closing) return;
-      closing = true;
-      log.info?.(`@averoa/core: ${signal} received, shutting down`);
+  // Graceful shutdown: readiness flips to 503 first, then (after
+  // SHUTDOWN_DELAY ms, so load balancers stop routing here) the server stops
+  // accepting connections, AppProvider.shutdown() runs and the DB, queue and
+  // log streams are closed, all within SHUTDOWN_TIMEOUT ms.
+  let closing = null;
+  const close = (reason = 'close()') => {
+    if (closing) return closing;
+    closing = (async () => {
+      health.markShuttingDown();
+      log.info?.(`@averoa/core: ${reason} received, shutting down`);
+
+      const delay = Number(process.env.SHUTDOWN_DELAY) || 0;
+      if (delay > 0) {
+        log.info?.(`@averoa/core: readiness is now 503; closing the server in ${delay}ms`);
+        await new Promise((resolve) => { setTimeout(resolve, delay); });
+      }
 
       const timeout = Number(process.env.SHUTDOWN_TIMEOUT) || 10000;
-      const timer = setTimeout(() => {
-        log.error?.('@averoa/core: graceful shutdown timed out, forcing exit');
-        process.exit(1);
-      }, timeout);
-      timer.unref();
+      let timer;
+      const timedOut = new Promise((resolve) => {
+        timer = setTimeout(() => {
+          log.error?.('@averoa/core: graceful shutdown timed out, forcing exit');
+          resolve(1);
+        }, timeout);
+        timer.unref();
+      });
 
-      let code = 0;
-      try {
-        await new Promise((resolve) => {
-          server.close(() => resolve());
-          server.closeIdleConnections?.();
-        });
-        await AppProvider.shutdown?.();
-        await Promise.allSettled([
-          (await resolveKnex(utilities))?.destroy?.(),
-          utilities.closeQueue?.(),
-          closeLogStreams(),
-        ]);
-      } catch (err) {
-        code = 1;
-        log.error?.(`@averoa/core: error during shutdown: ${err?.stack || err}`);
-      }
-      process.exit(code);
-    };
-    process.once('SIGTERM', () => shutdown('SIGTERM'));
-    process.once('SIGINT', () => shutdown('SIGINT'));
+      const work = (async () => {
+        try {
+          await new Promise((resolve) => {
+            server.close(() => resolve());
+            server.closeIdleConnections?.();
+          });
+          await AppProvider.shutdown?.();
+          await Promise.allSettled([
+            (await resolveKnex(utilities))?.destroy?.(),
+            utilities.closeQueue?.(),
+            closeLogStreams(),
+          ]);
+          return 0;
+        } catch (err) {
+          log.error?.(`@averoa/core: error during shutdown: ${err?.stack || err}`);
+          return 1;
+        }
+      })();
+
+      const code = await Promise.race([work, timedOut]);
+      clearTimeout(timer);
+      return code;
+    })();
+    return closing;
+  };
+
+  if (options.handleSignals !== false) {
+    const onSignal = async (signal) => process.exit(await close(signal));
+    process.once('SIGTERM', () => onSignal('SIGTERM'));
+    process.once('SIGINT', () => onSignal('SIGINT'));
   }
 
-  return { app, server };
+  return {
+    app, server, health, close,
+  };
 }
 
-export { closeLogStreams } from './morgan.js';
+export { closeLogStreams, accessLogSettings, jsonAccessFormat } from './morgan.js';
+export {
+  requestId, restoreRequestContext, requestContext, currentRequestId, isValidRequestId, trustIncomingRequestId,
+} from './request-id.js';
+export { createHealth, healthSettings } from './health.js';
 export { default as env } from './env.js';
 export { default as command } from './command.js';

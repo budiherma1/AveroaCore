@@ -170,13 +170,14 @@ test('error handler shows stack in development and hides it in production', asyn
     res = await fetch(`${srv.url}/api/boom`);
     assert.equal(res.status, 500);
     body = await res.json();
-    assert.deepEqual(body, { status: false, message: 'Internal Server Error' });
+    assert.deepEqual(body, { status: false, message: 'Internal Server Error', requestId: res.headers.get('x-request-id') });
 
     res = await fetch(`${srv.url}/boom`, { headers: { accept: 'text/html' } });
     const html = await res.text();
     assert.equal(res.status, 500);
     assert.doesNotMatch(html, /secret internals/);
     assert.doesNotMatch(html, /at /);
+    assert.match(html, new RegExp(`<p>Request ID: <code>${res.headers.get('x-request-id')}</code></p>`), 'only the id is added');
   } finally {
     process.env.NODE_ENV = 'test';
   }
@@ -192,7 +193,7 @@ test('C-a: error details are hidden unless NODE_ENV is development or test (stag
       let res = await fetch(`${srv.url}/api/boom`);
       assert.equal(res.status, 500);
       // eslint-disable-next-line no-await-in-loop
-      assert.deepEqual(await res.json(), { status: false, message: 'Internal Server Error' }, `NODE_ENV=${env}`);
+      assert.deepEqual(await res.json(), { status: false, message: 'Internal Server Error', requestId: res.headers.get('x-request-id') }, `NODE_ENV=${env}`);
 
       // eslint-disable-next-line no-await-in-loop
       res = await fetch(`${srv.url}/boom`, { headers: { accept: 'text/html' } });
@@ -205,7 +206,7 @@ test('C-a: error details are hidden unless NODE_ENV is development or test (stag
       // eslint-disable-next-line no-await-in-loop
       res = await fetch(`${srv.url}/api/does-not-exist`);
       // eslint-disable-next-line no-await-in-loop
-      assert.deepEqual(await res.json(), { status: false, message: 'Not Found' }, `NODE_ENV=${env}`);
+      assert.deepEqual(await res.json(), { status: false, message: 'Not Found', requestId: res.headers.get('x-request-id') }, `NODE_ENV=${env}`);
     }
 
     process.env.NODE_ENV = 'development';

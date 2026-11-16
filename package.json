@@ -16,6 +16,8 @@
     "cors.js",
     "csrf.js",
     "uploads.js",
+    "request-id.js",
+    "health.js",
     "edge-js.js",
     "morgan.js",
     "knexfile.js",
